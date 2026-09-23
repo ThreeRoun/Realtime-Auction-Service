@@ -1,0 +1,16 @@
+# 개인 작업 지침 (팀 공유 안 함)
+CLAUDE.md
+
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
