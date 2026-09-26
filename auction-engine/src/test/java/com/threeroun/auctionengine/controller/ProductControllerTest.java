@@ -113,6 +113,28 @@ class ProductControllerTest {
     }
 
     @Test
+    void startAt을_생략하면_지금_시각으로_채워져서_바로_진행중으로_생성된다() throws Exception {
+        User seller = seller();
+        Map<String, Object> request = Map.of(
+                "title", "startAt 생략 상품",
+                "description", "설명",
+                "startingPrice", 10000,
+                "bidUnit", 1000,
+                "sellerId", seller.getId().toString(),
+                "endAt", LocalDateTime.now().plusHours(1).toString());
+
+        String response = mockMvc.perform(post("/api/products")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+
+        Map<?, ?> body = objectMapper.readValue(response, Map.class);
+        assertThat(body.get("status")).isEqualTo("IN_PROGRESS");
+        assertThat(body.get("startAt")).isNotNull();
+    }
+
+    @Test
     void 시작시각이_미래인_상품을_등록하면_등록대기_상태로_생성된다() throws Exception {
         User seller = seller();
         Map<String, Object> request = Map.of(
