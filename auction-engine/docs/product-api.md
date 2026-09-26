@@ -1,6 +1,44 @@
-# 상품 목록 조회 API 명세 (구현 완료)
+# 상품 API 명세 (구현 완료)
 
-이슈 #10([프론트엔드] 상품 목록 API 연동)의 요구사항을 반영한 스펙.
+이슈 #10([프론트엔드] 상품 목록 API 연동), 2차 정기회의(9/26) "상품 등록/입찰 API 실제 동작" 요구사항을 반영한 스펙.
+
+## POST /api/products
+
+상품을 등록한다.
+
+### 요청
+
+```json
+{
+  "title": "무선 헤드폰",
+  "description": "상태 좋은 무선 헤드폰입니다.",
+  "startingPrice": 30000,
+  "bidUnit": 5000,
+  "sellerId": "11111111-1111-1111-1111-111111111111",
+  "startAt": "2026-09-26T10:00:00",
+  "endAt": "2026-09-30T18:00:00"
+}
+```
+
+| 필드 | 타입 | 설명 |
+| --- | --- | --- |
+| sellerId | UUID | 판매자 ID. bidderId와 마찬가지로 인증 체계가 없는 MVP 임시방편. |
+
+### 응답 - 성공 (201 Created)
+
+Product 객체 하나 (아래 GET 응답과 동일한 모양).
+
+⚠️ **상태 자동 전이 스케줄러가 아직 없어서, 상태는 등록 시점에 한 번만 결정된다:**
+- `startAt`이 이미 지났으면(현재 시각 이하) → 바로 `IN_PROGRESS`로 생성 (즉시 입찰 가능)
+- `startAt`이 미래면 → `PENDING`으로 생성 (스케줄러가 없으므로 시간이 지나도 자동으로 `IN_PROGRESS`가 되지 않음 — 데모/테스트 시 `startAt`을 과거로 넣을 것)
+
+### 응답 - 실패
+
+| HTTP status | code | 설명 |
+| --- | --- | --- |
+| 404 | USER_NOT_FOUND | sellerId가 존재하지 않는 사용자 |
+| 400 | INVALID_REQUEST | title/startingPrice/bidUnit/sellerId/startAt/endAt 중 필수값 누락, 또는 형식 오류 |
+| 400 | (메시지만) | endAt이 startAt보다 앞이거나 같음 |
 
 ## GET /api/products
 

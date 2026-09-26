@@ -2,6 +2,7 @@ package com.threeroun.auctionengine.controller;
 
 import com.threeroun.auctionengine.service.AuctionNotInProgressException;
 import com.threeroun.auctionengine.service.ProductNotFoundException;
+import com.threeroun.auctionengine.service.UserNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -18,6 +19,12 @@ public class ApiExceptionHandler {
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public ErrorResponse handleProductNotFound(ProductNotFoundException e) {
         return new ErrorResponse("PRODUCT_NOT_FOUND", e.getMessage());
+    }
+
+    @ExceptionHandler(UserNotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ErrorResponse handleUserNotFound(UserNotFoundException e) {
+        return new ErrorResponse("USER_NOT_FOUND", e.getMessage());
     }
 
     @ExceptionHandler(AuctionNotInProgressException.class)
