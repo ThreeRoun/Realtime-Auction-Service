@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
@@ -19,6 +20,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
@@ -84,6 +86,94 @@ class ProductControllerTest {
     @Test
     void 알수없는_status값이면_400을_반환한다() throws Exception {
         mockMvc.perform(get("/api/products").param("status", "NOT_A_STATUS"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void 시작시각이_지난_상품을_등록하면_바로_진행중_상태로_생성된다() throws Exception {
+        User seller = seller();
+        Map<String, Object> request = Map.of(
+                "title", "새 상품",
+                "description", "설명",
+                "startingPrice", 10000,
+                "bidUnit", 1000,
+                "sellerId", seller.getId().toString(),
+                "startAt", LocalDateTime.now().minusMinutes(1).toString(),
+                "endAt", LocalDateTime.now().plusHours(1).toString());
+
+        String response = mockMvc.perform(post("/api/products")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+
+        Map<?, ?> body = objectMapper.readValue(response, Map.class);
+        assertThat(body.get("status")).isEqualTo("IN_PROGRESS");
+        assertThat(body.get("currentPrice")).isEqualTo(10000);
+    }
+
+    @Test
+    void 시작시각이_미래인_상품을_등록하면_등록대기_상태로_생성된다() throws Exception {
+        User seller = seller();
+        Map<String, Object> request = Map.of(
+                "title", "미래 상품",
+                "description", "설명",
+                "startingPrice", 10000,
+                "bidUnit", 1000,
+                "sellerId", seller.getId().toString(),
+                "startAt", LocalDateTime.now().plusDays(1).toString(),
+                "endAt", LocalDateTime.now().plusDays(2).toString());
+
+        String response = mockMvc.perform(post("/api/products")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+
+        Map<?, ?> body = objectMapper.readValue(response, Map.class);
+        assertThat(body.get("status")).isEqualTo("PENDING");
+    }
+
+    @Test
+    void 존재하지_않는_판매자면_404를_반환한다() throws Exception {
+        Map<String, Object> request = Map.of(
+                "title", "상품",
+                "startingPrice", 10000,
+                "bidUnit", 1000,
+                "sellerId", UUID.randomUUID().toString(),
+                "startAt", LocalDateTime.now().toString(),
+                "endAt", LocalDateTime.now().plusHours(1).toString());
+
+        mockMvc.perform(post("/api/products")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void 마감시각이_시작시각보다_빠르면_400을_반환한다() throws Exception {
+        User seller = seller();
+        Map<String, Object> request = Map.of(
+                "title", "상품",
+                "startingPrice", 10000,
+                "bidUnit", 1000,
+                "sellerId", seller.getId().toString(),
+                "startAt", LocalDateTime.now().toString(),
+                "endAt", LocalDateTime.now().minusHours(1).toString());
+
+        mockMvc.perform(post("/api/products")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void 필수값이_없으면_400을_반환한다() throws Exception {
+        Map<String, Object> request = Map.of("title", "상품");
+
+        mockMvc.perform(post("/api/products")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
     }
 }
