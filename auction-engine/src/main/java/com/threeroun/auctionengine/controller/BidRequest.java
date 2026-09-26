@@ -7,7 +7,6 @@ import java.util.UUID;
 
 // bidderId를 body로 직접 받는 건 아직 인증 체계가 없는 MVP 임시방편.
 // 통합 단계에서 인증 토큰 기반으로 교체될 필드.
-// productId를 (경로 대신) body에 두는 것은 B(실시간 중계)의 요청 형식에 맞춘 것.
 public record BidRequest(
         @NotNull UUID productId,
         @NotNull UUID bidderId,

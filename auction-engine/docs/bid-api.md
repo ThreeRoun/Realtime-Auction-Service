@@ -4,9 +4,6 @@
 
 입찰을 등록한다.
 
-⚠️ 원래는 `POST /api/products/{productId}/bids`(경로에 productId)로 설계했었는데, B(실시간 중계)가
-브로드캐스트 시연용으로 `POST /api/bids` + body에 `productId` 포함 형태를 요청해서 그 형태로 통일했다.
-
 ### 요청
 
 ```
