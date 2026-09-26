@@ -67,4 +67,6 @@ Content-Type: application/json
 
 ## 실시간 반영
 
-입찰 성공 시(`BID_LOST_CONCURRENT` 제외) Redis Pub/Sub `bid_placed` 이벤트를 발행한다. `extended: true`인 경우 `auction_extended` 이벤트도 함께 발행한다. 이벤트 스펙은 [README.md](../../README.md)의 "WebSocket 이벤트" 섹션 참고 (`bid_placed`, `auction_extended`, `auction_closed`).
+입찰 성공 시(`BID_LOST_CONCURRENT` 제외) Redis Pub/Sub 단일 채널 `auction_events`로 `bid_placed` 이벤트를 발행한다. `extended: true`인 경우 `auction_extended` 이벤트도 함께 발행한다.
+
+B(실시간 중계)가 이 채널 하나만 구독해 모든 이벤트를 받고, 받은 메시지를 그대로(pass-through) 브라우저에 전달하므로 payload에 `event` 필드(예: `"bid_placed"`)가 반드시 포함되어야 이벤트 종류를 구분할 수 있다. 이벤트 스펙은 [README.md](../../README.md)의 "WebSocket 이벤트" 섹션 참고 (`bid_placed`, `auction_extended`, `auction_closed`).
