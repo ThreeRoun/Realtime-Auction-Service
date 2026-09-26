@@ -47,10 +47,12 @@ class BidControllerTest {
         User bidder = user("bidder");
         Product product = productRepository.save(inProgressProduct(seller));
 
-        String requestBody = objectMapper.writeValueAsString(
-                Map.of("bidderId", bidder.getId().toString(), "amount", STARTING_PRICE + BID_UNIT));
+        String requestBody = objectMapper.writeValueAsString(Map.of(
+                "productId", product.getId().toString(),
+                "bidderId", bidder.getId().toString(),
+                "amount", STARTING_PRICE + BID_UNIT));
 
-        String response = mockMvc.perform(post("/api/products/{productId}/bids", product.getId())
+        String response = mockMvc.perform(post("/api/bids")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestBody))
                 .andExpect(status().isCreated())
@@ -69,10 +71,12 @@ class BidControllerTest {
         Product product = productRepository.save(inProgressProduct(seller));
 
         // 최소 입찰가(현재가+bid_unit) 미만 금액
-        String requestBody = objectMapper.writeValueAsString(
-                Map.of("bidderId", bidder.getId().toString(), "amount", STARTING_PRICE));
+        String requestBody = objectMapper.writeValueAsString(Map.of(
+                "productId", product.getId().toString(),
+                "bidderId", bidder.getId().toString(),
+                "amount", STARTING_PRICE));
 
-        String response = mockMvc.perform(post("/api/products/{productId}/bids", product.getId())
+        String response = mockMvc.perform(post("/api/bids")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestBody))
                 .andExpect(status().isCreated())
@@ -85,10 +89,12 @@ class BidControllerTest {
     @Test
     void 존재하지_않는_상품이면_404를_반환한다() throws Exception {
         User bidder = user("bidder");
-        String requestBody = objectMapper.writeValueAsString(
-                Map.of("bidderId", bidder.getId().toString(), "amount", 100_000));
+        String requestBody = objectMapper.writeValueAsString(Map.of(
+                "productId", UUID.randomUUID().toString(),
+                "bidderId", bidder.getId().toString(),
+                "amount", 100_000));
 
-        mockMvc.perform(post("/api/products/{productId}/bids", UUID.randomUUID())
+        mockMvc.perform(post("/api/bids")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestBody))
                 .andExpect(status().isNotFound());
@@ -103,10 +109,12 @@ class BidControllerTest {
         product.setStatus(ProductStatus.COMPLETED);
         productRepository.save(product);
 
-        String requestBody = objectMapper.writeValueAsString(
-                Map.of("bidderId", bidder.getId().toString(), "amount", 100_000));
+        String requestBody = objectMapper.writeValueAsString(Map.of(
+                "productId", product.getId().toString(),
+                "bidderId", bidder.getId().toString(),
+                "amount", 100_000));
 
-        mockMvc.perform(post("/api/products/{productId}/bids", product.getId())
+        mockMvc.perform(post("/api/bids")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestBody))
                 .andExpect(status().isConflict());
@@ -118,9 +126,24 @@ class BidControllerTest {
         User bidder = user("bidder");
         Product product = productRepository.save(inProgressProduct(seller));
 
-        String requestBody = objectMapper.writeValueAsString(Map.of("bidderId", bidder.getId().toString()));
+        String requestBody = objectMapper.writeValueAsString(Map.of(
+                "productId", product.getId().toString(),
+                "bidderId", bidder.getId().toString()));
 
-        mockMvc.perform(post("/api/products/{productId}/bids", product.getId())
+        mockMvc.perform(post("/api/bids")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void productId가_없으면_400을_반환한다() throws Exception {
+        User bidder = user("bidder");
+        String requestBody = objectMapper.writeValueAsString(Map.of(
+                "bidderId", bidder.getId().toString(),
+                "amount", 100_000));
+
+        mockMvc.perform(post("/api/bids")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestBody))
                 .andExpect(status().isBadRequest());
