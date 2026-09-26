@@ -56,17 +56,21 @@ public class ProductController {
         User seller = userRepository.findById(request.sellerId())
                 .orElseThrow(() -> new UserNotFoundException(request.sellerId()));
 
-        if (!request.endAt().isAfter(request.startAt())) {
+        // 프론트 상품 등록 폼에 시작 시각 입력란이 없어서(등록하면 바로 시작한다고 가정) startAt 생략을 허용하고,
+        // 생략됐으면 "지금"으로 채운다.
+        LocalDateTime startAt = request.startAt() != null ? request.startAt() : LocalDateTime.now();
+
+        if (!request.endAt().isAfter(startAt)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "endAt은 startAt보다 뒤여야 합니다");
         }
 
         Product product = new Product(request.title(), request.description(), request.startingPrice(),
-                request.bidUnit(), seller, request.startAt(), request.endAt());
+                request.bidUnit(), seller, startAt, request.endAt());
 
         // 마감 연장/낙찰 처리를 자동으로 돌리는 스케줄러가 아직 없어서, 상품 상태 전이는 지금 여기
         // "생성 시점에 시작 시각이 이미 지났으면 바로 진행중으로 만든다"는 것 하나뿐이다.
         // (스케줄러가 생기기 전까지는 start_at이 미래인 PENDING 상품이 스스로 IN_PROGRESS로 안 바뀐다.)
-        if (!request.startAt().isAfter(LocalDateTime.now())) {
+        if (!startAt.isAfter(LocalDateTime.now())) {
             product.setStatus(ProductStatus.IN_PROGRESS);
         }
 
