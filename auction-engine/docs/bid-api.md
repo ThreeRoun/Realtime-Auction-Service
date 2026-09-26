@@ -1,16 +1,20 @@
 # 입찰 API 명세 (구현 완료)
 
-## POST /api/products/{productId}/bids
+## POST /api/bids
 
-특정 상품에 입찰을 등록한다.
+입찰을 등록한다.
+
+⚠️ 원래는 `POST /api/products/{productId}/bids`(경로에 productId)로 설계했었는데, B(실시간 중계)가
+브로드캐스트 시연용으로 `POST /api/bids` + body에 `productId` 포함 형태를 요청해서 그 형태로 통일했다.
 
 ### 요청
 
 ```
-POST /api/products/{productId}/bids
+POST /api/bids
 Content-Type: application/json
 
 {
+  "productId": "11111111-1111-1111-1111-111111111111",
   "bidderId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
   "amount": 15000
 }
@@ -18,6 +22,7 @@ Content-Type: application/json
 
 | 필드 | 타입 | 설명 |
 | --- | --- | --- |
+| productId | UUID | 입찰 대상 상품 ID. |
 | bidderId | UUID | 입찰자 ID. 이번 MVP엔 별도 인증 체계가 없어 요청 바디로 직접 받는다. |
 | amount | integer | 입찰 금액. `현재가(current_price) + 최소 입찰 단위(bid_unit)` 이상이어야 유효하게 처리된다. |
 
@@ -52,7 +57,7 @@ BidService가 진 입찰 기록도 롤백 없이 남기도록 설계돼 있어(�
 | --- | --- | --- |
 | PRODUCT_NOT_FOUND | 404 | 존재하지 않는 상품 |
 | AUCTION_NOT_IN_PROGRESS | 409 | 상품 status가 진행중/마감연장이 아님 (아직 시작 전이거나 이미 종료됨) |
-| INVALID_REQUEST | 400 | bidderId 누락, amount 누락/0 이하 등 요청 형식 자체가 잘못됨 |
+| INVALID_REQUEST | 400 | productId/bidderId 누락, amount 누락/0 이하 등 요청 형식 자체가 잘못됨 |
 
 ### 미구현 (다음 단계)
 
