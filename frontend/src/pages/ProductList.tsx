@@ -1,7 +1,32 @@
+import { useEffect, useState } from "react";
 import ProductCard from "../components/ProductCard";
-import { products } from "../data/products";
+import type { Product } from "../data/products";
 
 function ProductList() {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+  fetch("/api/products")
+    .then((response) => response.json())
+    .then((data: Product[]) => {
+      setProducts(data);
+    })
+    .catch((error) => {
+      console.error("상품 목록 조회 실패:", error);
+    })
+    .finally(() => {
+      setLoading(false);
+    });
+  }, []);
+
+  if (loading) {
+    return (
+      <main className="page-container">
+        <p>상품 목록을 불러오는 중입니다...</p>
+      </main>
+    );
+  }
+
   return (
     <main className="page-container">
       <section className="page-header">
