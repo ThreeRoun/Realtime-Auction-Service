@@ -1,0 +1,64 @@
+# 서버(배포 대상) 전용 compose 파일 - 로컬 build 대신 ECR에 push된 이미지를 pull해서 기동
+# 사용 전 ECR_REGISTRY / IMAGE_TAG 환경변수가 설정되어 있어야 함 (CI에서 자동 주입)
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: auction-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: auction
+      POSTGRES_PASSWORD: auction
+      POSTGRES_DB: auction
+    # TODO: 실제 프로덕션 전환 시 비밀번호를 AWS Secrets Manager/SSM Parameter Store로 이전
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U auction" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: auction-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  auction-engine:
+    image: ${ECR_REGISTRY}/auction-engine:${IMAGE_TAG}
+    container_name: auction-engine
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  realtime-relay:
+    image: ${ECR_REGISTRY}/realtime-relay:${IMAGE_TAG}
+    container_name: realtime-relay
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    depends_on:
+      redis:
+        condition: service_started
+
+  frontend:
+    image: ${ECR_REGISTRY}/frontend:${IMAGE_TAG}
+    container_name: frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - auction-engine
+      - realtime-relay
+
+volumes:
+  db-data:

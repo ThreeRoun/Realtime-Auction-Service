@@ -1,0 +1,93 @@
+name: Deploy to AWS (baseline)
+
+# baseline 브랜치에 PR이 머지(=push)되면:
+#   1) 3개 서비스 이미지를 빌드해 ECR에 태그(커밋 SHA + baseline-latest)로 push
+#   2) EC2에 SSH 접속해 해당 태그 이미지를 pull 후 기동 (docker-compose.prod.yml)
+#   3) 배포 후 헬스체크로 정상 기동 여부 검증
+#
+# TODO: 서버/AWS 리소스 준비 후 아래 Secrets 등록
+#   - AWS_REGION, ECR_REGISTRY (예: 123456789012.dkr.ecr.ap-northeast-2.amazonaws.com)
+#   - AWS_ROLE_TO_ASSUME (OIDC로 ECR push 권한을 가진 IAM Role ARN) — 장기 액세스 키 대신 OIDC 권장
+#   - AWS_HOST, AWS_SSH_USER, AWS_SSH_KEY, AWS_SSH_PORT, DEPLOY_PATH (SSH 배포용)
+
+on:
+  push:
+    branches: [baseline]
+
+permissions:
+  id-token: write   # AWS OIDC 인증에 필요
+  contents: read
+
+env:
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [auction-engine, realtime-relay, frontend]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ secrets.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push ${{ matrix.service }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ./${{ matrix.service }}
+          push: true
+          tags: |
+            ${{ steps.ecr-login.outputs.registry }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}
+            ${{ steps.ecr-login.outputs.registry }}/${{ matrix.service }}:baseline-latest
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # TODO: 아래 GitHub Secrets를 실제 서버 준비 후 등록
+      # - AWS_HOST: EC2 퍼블릭 IP 또는 도메인
+      # - AWS_SSH_USER: SSH 접속 계정 (예: ubuntu, ec2-user)
+      # - AWS_SSH_KEY: SSH 접속용 프라이빗 키 (PEM 원문)
+      # - AWS_SSH_PORT: SSH 포트 (기본 22, 없으면 생략 가능)
+      # - DEPLOY_PATH: 서버 상 저장소 경로 (예: /home/ubuntu/Realtime-Auction-Service)
+      # - ECR_REGISTRY: docker-compose.prod.yml에서 이미지 경로 치환에 사용
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.AWS_HOST }}
+          username: ${{ secrets.AWS_SSH_USER }}
+          key: ${{ secrets.AWS_SSH_KEY }}
+          port: ${{ secrets.AWS_SSH_PORT }}
+          script: |
+            set -e
+            export ECR_REGISTRY=${{ secrets.ECR_REGISTRY }}
+            export IMAGE_TAG=${{ env.IMAGE_TAG }}
+            cd ${{ secrets.DEPLOY_PATH }}
+            git fetch origin baseline
+            git reset --hard origin/baseline
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d
+            docker image prune -f
+
+  health-check:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      # TODO: 실제 서비스에 /health(혹은 /actuator/health) 엔드포인트가 추가되면 대상 URL 보강
+      - name: Verify auction-engine is responding
+        run: |
+          curl --fail --retry 5 --retry-delay 5 --retry-connrefused \
+            "http://${{ secrets.AWS_HOST }}:8080/actuator/health"
