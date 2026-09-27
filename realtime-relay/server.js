@@ -4,13 +4,23 @@
 const { WebSocketServer } = require('ws');
 const Redis = require('ioredis');
 
-const PORT = 8080;
+const PORT = process.env.PORT || 4000;
 // wss: WebSocket Server (8080 문지기인 서버 전체 관리자) 
 const wss = new WebSocketServer({ port : PORT });
+console.log(`[중계 엔진] WebSocket 서버 포트: ${PORT}`);
 
 const redisSubscriber = new Redis({
-  host: '127.0.0.1',
-  port: 6379,
+  host: process.env.REDIS_HOST || '127.0.0.1',
+  port: Number(process.env.REDIS_PORT) || 6379,
+});
+
+// Redis 연결 성공 여부 로그
+redisSubscriber.on('connect', () => {
+  console.log('✅ [Redis] TCP 소켓 연결 성공 (127.0.0.1:6379)');
+});
+
+redisSubscriber.on('error', (err) => {
+  console.error('❌ [Redis 연결 오류]:', err.message);
 });
 
 // key가 product_id이고, value가 참가자 set인 map
@@ -24,11 +34,11 @@ const rooms = new Map();
 // Back A가 던진 이벤트를 귀 기울여 듣고, 해당 경매 방에 있는 소켓들에게만 그대로 전달. 
 
 /* auction_events 채널 구독 */
-redisSubscriber.subscribe('auction_events', (err) => {
+redisSubscriber.subscribe('auction_events', (err,count) => {
   if(err){
     console.error(`❌ [Redis 구독 실패]:`, err.message);
   } else{
-    console.log("✅ [Redis] 'auction_events' 채널 감시 시작");
+    console.log(`✅ [Redis] 'auction_events' 채널 구독 완료! (현재 구독 채널 수: ${count})`);
   }
 });
 
@@ -43,7 +53,7 @@ redisSubscriber.on('message', (channel, rawString) => {
     // 들어온 rawString을 파싱해서 js 객체로 만들기.  
     const eventData = JSON.parse(rawString);
     // 만든 js 객체에서 product_id 추출해서 해당 상품 방 Set을 targetRoom으로 꺼내온다.
-    const targetRoom = rooms.get(eventData.product_id);
+    const targetRoom = rooms.get(String(eventData.product_id));
     // 방이 존재한다면 방 안의 소켓들을 forEach로 돌면서 전송한다.
     if(targetRoom && targetRoom.size > 0){
       console.log(`\n📢 [중계] ${eventData.product_id}번 방 (${targetRoom.size}명)에게 데이터 살포`);
@@ -51,7 +61,7 @@ redisSubscriber.on('message', (channel, rawString) => {
       targetRoom.forEach(client => {
         // 사용자가 막 브라우저 창을 닫았거나 네트워크가 끊겨 파이프라인이 닫히는 중일 수도 있으므로,
         // 파이프라인이 정상적으로 열려(OPEN) 있을 때만 데이터 전송.
-        if(client.readyState === client.OPEN){
+        if(client.readyState === 1){
           // 클라이언트에 보낼 데이터는 A가 보낸 원본 문자열을 그대로 전송
           client.send(rawString);
         }
