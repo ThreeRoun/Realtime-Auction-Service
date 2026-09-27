@@ -1,12 +1,15 @@
 package com.threeroun.auctionengine.repository;
 
 import com.threeroun.auctionengine.domain.Product;
+import com.threeroun.auctionengine.domain.ProductStatus;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -16,4 +19,13 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select p from Product p where p.id = :id")
     Optional<Product> findByIdForUpdate(@Param("id") UUID id);
+
+    // GET /api/products: 기본값(진행중 상품만) 조회용, 마감 임박순 정렬
+    List<Product> findByStatusInOrderByEndAtAsc(Collection<ProductStatus> statuses);
+
+    // GET /api/products?status=XXX: 특정 상태만 조회
+    List<Product> findByStatusOrderByEndAtAsc(ProductStatus status);
+
+    // GET /api/products?status=all: 전체 조회
+    List<Product> findAllByOrderByEndAtAsc();
 }
