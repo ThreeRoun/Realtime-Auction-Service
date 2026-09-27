@@ -1,10 +1,21 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { products } from "../data/products";
+import type { Product } from "../data/products";
 
 function ProductDetail() {
   const { id } = useParams();
-  const product = products.find((item) => item.id === Number(id));
+  const [product, setProduct] = useState<Product | null>(null);
+  useEffect(() => {
+    fetch("/api/products?status=all")
+    .then((response) => response.json())
+    .then((data: Product[]) => {
+      const foundProduct = data.find((item) => item.id === id);
+      setProduct(foundProduct ?? null);
+    })
+    .catch((error) => {
+      console.error("상품 상세 조회 실패:", error);
+    });
+  }, [id]);
 
   const [currentPrice, setCurrentPrice] = useState(
     product?.currentPrice ?? 0
