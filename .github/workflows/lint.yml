@@ -13,6 +13,6 @@ jobs:
 
       # TODO: 각 서비스 코드가 추가되면 서비스별 린트(Checkstyle/ESLint 등)로 확장
       - name: Lint Markdown docs
-        uses: DavidAnson/markdownlint-cli2-action@v18
+        uses: DavidAnson/markdownlint-cli2-action@v24
         with:
           globs: "**/*.md"
