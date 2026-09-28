@@ -1,0 +1,102 @@
+name: Deploy to AWS (baseline)
+
+# baseline 브랜치에 PR이 머지(=push)되면:
+#   1) 3개 서비스 이미지를 빌드해 ECR에 태그(커밋 SHA + baseline-latest)로 push
+#   2) SSH 없이 AWS SSM Run Command로 EC2에 배포 명령 전달 (docker-compose.prod.yml)
+#   3) 배포 후 헬스체크로 정상 기동 여부 검증
+#
+# TODO: 서버/AWS 리소스 준비 후 아래 Secrets 등록
+#   - AWS_REGION, ECR_REGISTRY (예: 123456789012.dkr.ecr.ap-northeast-2.amazonaws.com)
+#   - AWS_ROLE_TO_ASSUME (ECR push + SSM 권한을 가진 IAM Role ARN, OIDC) — 장기 액세스 키 대신 OIDC 권장
+#   - EC2_INSTANCE_ID, DEPLOY_PATH (SSM 배포용)
+#   - AWS_HOST (헬스체크에서 서비스 포트로 직접 접속하기 위한 퍼블릭 IP, SSH와 무관)
+
+on:
+  push:
+    branches: [baseline]
+
+permissions:
+  id-token: write   # AWS OIDC 인증에 필요
+  contents: read
+
+env:
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [auction-engine, realtime-relay, frontend]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ secrets.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push ${{ matrix.service }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ./${{ matrix.service }}
+          push: true
+          tags: |
+            ${{ steps.ecr-login.outputs.registry }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}
+            ${{ steps.ecr-login.outputs.registry }}/${{ matrix.service }}:baseline-latest
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ secrets.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+
+      # TODO: 아래 GitHub Secrets를 실제 서버 준비 후 등록
+      # - EC2_INSTANCE_ID: SSM 대상 인스턴스 ID (예: i-0abcdef1234567890)
+      # - DEPLOY_PATH: 서버 상 저장소 경로 (예: /home/ubuntu/Realtime-Auction-Service)
+      # - ECR_REGISTRY: docker-compose.prod.yml에서 이미지 경로 치환에 사용
+      - name: Deploy via AWS SSM (no SSH)
+        run: |
+          set -e
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
+            --document-name "AWS-RunShellScript" \
+            --parameters commands="[
+              \"cd ${{ secrets.DEPLOY_PATH }}\",
+              \"export ECR_REGISTRY=${{ secrets.ECR_REGISTRY }}\",
+              \"export IMAGE_TAG=${{ env.IMAGE_TAG }}\",
+              \"git fetch origin baseline\",
+              \"git reset --hard origin/baseline\",
+              \"docker compose -f docker-compose.prod.yml pull\",
+              \"docker compose -f docker-compose.prod.yml up -d\",
+              \"docker image prune -f\"
+            ]" \
+            --query "Command.CommandId" --output text)
+
+          aws ssm wait command-executed \
+            --command-id "$COMMAND_ID" \
+            --instance-id "${{ secrets.EC2_INSTANCE_ID }}"
+
+          aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "${{ secrets.EC2_INSTANCE_ID }}"
+
+  health-check:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      # TODO: 실제 서비스에 /health(혹은 /actuator/health) 엔드포인트가 추가되면 대상 URL 보강
+      - name: Verify auction-engine is responding
+        run: |
+          curl --fail --retry 5 --retry-delay 5 --retry-connrefused \
+            "http://${{ secrets.AWS_HOST }}:8080/actuator/health"
