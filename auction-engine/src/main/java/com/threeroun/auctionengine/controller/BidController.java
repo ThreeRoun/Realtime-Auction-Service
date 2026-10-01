@@ -1,6 +1,6 @@
 package com.threeroun.auctionengine.controller;
 
-import com.threeroun.auctionengine.domain.Bid;
+import com.threeroun.auctionengine.service.BidResult;
 import com.threeroun.auctionengine.service.BidService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -23,7 +23,7 @@ public class BidController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public BidResponse placeBid(@Valid @RequestBody BidRequest request) {
-        Bid bid = bidService.placeBid(request.productId(), request.bidderId(), request.amount());
-        return BidResponse.from(bid);
+        BidResult result = bidService.placeBid(request.productId(), request.bidderId(), request.amount());
+        return BidResponse.from(result);
     }
 }
