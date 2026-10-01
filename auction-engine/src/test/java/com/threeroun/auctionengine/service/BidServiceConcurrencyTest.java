@@ -75,8 +75,8 @@ class BidServiceConcurrencyTest {
                 readyLatch.countDown();
                 try {
                     startLatch.await();
-                    Bid bid = bidService.placeBid(product.getId(), bidder.getId(), bidAmount);
-                    if (bid.isValid()) {
+                    BidResult result = bidService.placeBid(product.getId(), bidder.getId(), bidAmount);
+                    if (result.bid().isValid()) {
                         successCount.incrementAndGet();
                     }
                 } catch (InterruptedException e) {

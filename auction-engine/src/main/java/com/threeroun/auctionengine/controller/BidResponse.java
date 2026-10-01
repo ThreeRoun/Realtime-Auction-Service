@@ -2,6 +2,7 @@ package com.threeroun.auctionengine.controller;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.threeroun.auctionengine.domain.Bid;
+import com.threeroun.auctionengine.service.BidResult;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -18,15 +19,18 @@ public record BidResponse(
         UUID bidderId,
         Integer amount,
         LocalDateTime bidAt,
-        @JsonProperty("isValid") boolean isValid
+        @JsonProperty("isValid") boolean isValid,
+        boolean extended
 ) {
-    public static BidResponse from(Bid bid) {
+    public static BidResponse from(BidResult result) {
+        Bid bid = result.bid();
         return new BidResponse(
                 bid.getId(),
                 bid.getProduct().getId(),
                 bid.getBidder().getId(),
                 bid.getAmount(),
                 bid.getBidAt(),
-                bid.isValid());
+                bid.isValid(),
+                result.extended());
     }
 }
