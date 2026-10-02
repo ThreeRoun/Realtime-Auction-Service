@@ -1,4 +1,3 @@
-<!-- markdownlint-disable MD013 -->
 # Realtime-Auction-Service
 
 ## 🔨 실시간 경매 서비스
@@ -21,7 +20,7 @@
 
 ## 개발 범위
 
-### MVP (필수)
+**MVP (필수)**
 
 1. 상품 등록
 2. 입찰 등록 및 최고가 판정
