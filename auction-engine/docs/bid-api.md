@@ -1,3 +1,4 @@
+<!-- markdownlint-disable MD013 -->
 # 입찰 API 명세 (구현 완료)
 
 ## POST /api/bids
@@ -6,7 +7,7 @@
 
 ### 요청
 
-```
+```http
 POST /api/bids
 Content-Type: application/json
 
