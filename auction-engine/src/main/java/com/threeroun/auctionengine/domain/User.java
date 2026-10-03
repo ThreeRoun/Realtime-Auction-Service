@@ -42,6 +42,13 @@ public class User {
         this.passwordHash = passwordHash;
     }
 
+    // 회원가입 시점에 초기 크레딧을 받는 생성자. 결제 연동이 없는 MVP라 "충전" API가 따로
+    // 없으므로, 데모/테스트에서 입찰이 가능하려면 가입 시 크레딧을 바로 부여할 수 있어야 한다.
+    public User(String username, String email, String passwordHash, int initialCredit) {
+        this(username, email, passwordHash);
+        this.credit = initialCredit;
+    }
+
     public UUID getId() {
         return id;
     }
