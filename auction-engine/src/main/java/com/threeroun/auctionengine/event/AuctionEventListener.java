@@ -26,4 +26,9 @@ public class AuctionEventListener {
     public void onAuctionExtended(AuctionExtendedEvent event) {
         publisher.publish(event);
     }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onAuctionClosed(AuctionClosedEvent event) {
+        publisher.publish(event);
+    }
 }
