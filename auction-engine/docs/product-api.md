@@ -91,3 +91,40 @@ Product 객체 하나 (아래 GET 응답과 동일한 모양).
 2. **`status` 값이 `"active" | "extended" | "closed"`가 아니라 실제 엔티티 enum 그대로다:**
    `PENDING`(등록대기) / `IN_PROGRESS`(진행중) / `EXTENDED`(마감연장) / `SOLD`(낙찰확정) / `UNSOLD`(유찰) / `COMPLETED`(완료).
    기본 목록 조회(status 파라미터 없음) 결과에는 `IN_PROGRESS`, `EXTENDED`만 나오므로, 목록 화면에서는 사실상 이 두 값만 처리하면 된다.
+
+## GET /api/products/{id}
+
+상품 상세 조회. 응답 모양은 `GET /api/products`의 배열 원소 하나와 동일.
+
+| HTTP status | 설명 |
+| --- | --- |
+| 200 | Product 객체 하나 |
+| 404 | 존재하지 않는 상품 (PRODUCT_NOT_FOUND) |
+
+## GET /api/products/{id}/bids
+
+해당 상품에 대한 입찰 이력 전체 조회. **진 입찰(`isValid: false`)도 포함** — Bid가
+로그 테이블 방침으로 설계돼 있어서, 누가 언제 얼마를 불렀는지 전부 보여주기 위함.
+
+정렬: 최신 입찰이 먼저 나오도록 `bid_at desc`.
+
+### 응답 (200 OK)
+
+```json
+[
+  {
+    "bidId": "b1e0c6d2-...",
+    "bidderId": "3fa85f64-...",
+    "amount": 15000,
+    "bidAt": "2026-09-23T13:40:00",
+    "isValid": true
+  }
+]
+```
+
+`productId`는 URL에 이미 있으므로 응답에 다시 넣지 않는다. 상품은 존재하는데 입찰이
+없으면 빈 배열 `[]`.
+
+| HTTP status | 설명 |
+| --- | --- |
+| 404 | 존재하지 않는 상품 (PRODUCT_NOT_FOUND) |
