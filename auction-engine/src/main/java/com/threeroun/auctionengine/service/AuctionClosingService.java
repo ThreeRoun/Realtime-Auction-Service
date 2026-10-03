@@ -7,6 +7,7 @@ import com.threeroun.auctionengine.domain.User;
 import com.threeroun.auctionengine.event.AuctionClosedEvent;
 import com.threeroun.auctionengine.repository.BidRepository;
 import com.threeroun.auctionengine.repository.ProductRepository;
+import com.threeroun.auctionengine.repository.UserRepository;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,12 +21,14 @@ public class AuctionClosingService {
 
     private final ProductRepository productRepository;
     private final BidRepository bidRepository;
+    private final UserRepository userRepository;
     private final ApplicationEventPublisher eventPublisher;
 
     public AuctionClosingService(ProductRepository productRepository, BidRepository bidRepository,
-                                  ApplicationEventPublisher eventPublisher) {
+                                  UserRepository userRepository, ApplicationEventPublisher eventPublisher) {
         this.productRepository = productRepository;
         this.bidRepository = bidRepository;
+        this.userRepository = userRepository;
         this.eventPublisher = eventPublisher;
     }
 
@@ -55,9 +58,14 @@ public class AuctionClosingService {
         // 금액 높은 순으로 유효한 입찰을 하나씩 시도한다. 1순위가 크레딧 부족이면 2순위로 승계
         // (크레딧은 낙찰 확정 시점에야 비로소 확인/차감하는 정책이라, 입찰 시점엔 아무도 크레딧
         // 부족 여부를 몰랐을 수 있음 - 그래서 여기서 순서대로 걸러내야 한다).
+        //
+        // 입찰자 User row도 findByIdForUpdate로 잠근다. 같은 유저가 동시에 두 경매에서 낙찰되는
+        // 경우(서로 다른 상품이라 Product 락만으로는 못 막는다) 크레딧 차감이 두 트랜잭션에서
+        // 동시에 같은 credit 값을 읽어 lost update가 나는 것을 막기 위함이다.
         List<Bid> candidates = bidRepository.findByProductIdAndValidTrueOrderByAmountDesc(productId);
         for (Bid bid : candidates) {
-            User bidder = bid.getBidder();
+            User bidder = userRepository.findByIdForUpdate(bid.getBidder().getId())
+                    .orElseThrow(() -> new IllegalStateException("입찰자를 찾을 수 없습니다: " + bid.getBidder().getId()));
             if (bidder.getCredit() >= bid.getAmount()) {
                 bidder.deductCredit(bid.getAmount());
                 winnerId = bidder.getId();
