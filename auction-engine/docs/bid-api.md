@@ -6,7 +6,7 @@
 
 ### 요청
 
-```
+```http
 POST /api/bids
 Content-Type: application/json
 
@@ -32,14 +32,17 @@ Content-Type: application/json
   "bidderId": "3fa85f64-...",
   "amount": 15000,
   "bidAt": "2026-09-23T13:40:00",
-  "isValid": true
+  "isValid": true,
+  "extended": false
 }
 ```
 
 ⚠️ **"진 입찰"(최저 입찰 단위 미달, 동시 입찰 경쟁에서 밀림)도 항상 201로 응답한다.** `isValid: false`로만 구분한다.
 요청 자체는 정상 접수된 것이고(Bid 로그 테이블에 기록됨, README의 "로그 테이블" 방침), 단지 최고가 갱신에는 실패했다는 의미다.
 BidService가 진 입찰 기록도 롤백 없이 남기도록 설계돼 있어(트랜잭션 안에서 예외를 던지지 않음), 그 설계와 HTTP 응답 의미를 일치시키기 위해
-409가 아닌 201 + `isValid: false`로 통일했다 (마감 연장/최고가 필드는 아직 미구현이라 응답에 없음 — 아래 "미구현" 참고).
+409가 아닌 201 + `isValid: false`로 통일했다.
+
+`extended`는 **이 요청이 지금 막 마감 연장을 발생시켰는지** 여부다. 유효한 입찰이고, 마감까지 30초 이하로 남은 상태였다면 마감을 2분 연장하고 상품 status를 `EXTENDED`로 바꾼 뒤 `true`가 된다 (값은 `BidService.ANTI_SNIPING_WINDOW` / `EXTENSION_DURATION` 상수로 조정 가능). 진 입찰은 가격이 안 바뀌므로 연장 대상이 아니라 항상 `false`.
 
 ### 응답 - 실패
 
@@ -58,11 +61,11 @@ BidService가 진 입찰 기록도 롤백 없이 남기도록 설계돼 있어(�
 
 ### 미구현 (다음 단계)
 
-- `extended`(마감 연장 여부), `productEndAt`, `productCurrentPrice` 필드는 안티 스나이핑/마감 연장 로직이 아직 구현되지 않아 응답에 없음.
-  최신 현재가는 `GET /api/products`로 별도 조회해야 한다.
+- `productEndAt`, `productCurrentPrice` 필드는 응답에 없음. 최신 현재가/마감시각은 `GET /api/products`로 별도 조회해야 한다.
+- 낙찰 확정(크레딧 차감)과 상태 자동 전이 스케줄러는 아직 없음 (이슈 #21, #22 참고).
 
 ## 실시간 반영
 
-입찰 성공 시(`isValid: true`) Redis Pub/Sub 단일 채널 `auction_events`로 `bid_placed` 이벤트를 발행한다. `isValid: false`(진 입찰)는 발행하지 않는다.
+입찰 성공 시(`isValid: true`) Redis Pub/Sub 단일 채널 `auction_events`로 `bid_placed` 이벤트를 발행한다. `isValid: false`(진 입찰)는 발행하지 않는다. 마감이 연장되면(`extended: true`) `auction_extended` 이벤트도 함께 발행한다.
 
 B(실시간 중계)가 이 채널 하나만 구독해 모든 이벤트를 받고, 받은 메시지를 그대로(pass-through) 브라우저에 전달하므로 payload에 `event` 필드(예: `"bid_placed"`)가 반드시 포함되어야 이벤트 종류를 구분할 수 있다. 이벤트 스펙은 [README.md](../../README.md)의 "WebSocket 이벤트" 섹션 참고 (`bid_placed`, `auction_extended`, `auction_closed`).
