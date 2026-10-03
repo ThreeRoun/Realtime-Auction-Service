@@ -10,16 +10,23 @@ function ProductDetail() {
     .then((response) => response.json())
     .then((data: Product[]) => {
       const foundProduct = data.find((item) => item.id === id);
-      setProduct(foundProduct ?? null);
+      
+      if (foundProduct) {
+        setProduct(foundProduct);
+        setCurrentPrice(foundProduct.currentPrice);
+      } else {
+        setProduct(null);
+      }
     })
     .catch((error) => {
       console.error("상품 상세 조회 실패:", error);
     });
   }, [id]);
 
-  const [currentPrice, setCurrentPrice] = useState(
-    product?.currentPrice ?? 0
-  );
+  const [currentPrice, setCurrentPrice] = useState(0);
+  const [bidAmount, setBidAmount] = useState("");
+  const [isBidding] = useState(false);
+  const [bidMessage, setBidMessage] = useState("");
 
   if (!product) {
     return (
@@ -31,7 +38,27 @@ function ProductDetail() {
   }
 
   const handleBid = () => {
-    setCurrentPrice((prevPrice) => prevPrice + product.bidUnit);
+  const amount = Number(bidAmount);
+
+  setBidMessage("");
+
+  if (!amount) {
+    setBidMessage("입찰 금액을 입력해주세요.");
+    return;
+  }
+
+  const minimumBid = currentPrice + product.bidUnit;
+
+  if (amount < minimumBid) {
+    setBidMessage(
+      `최소 입찰 금액은 ${minimumBid.toLocaleString()}원입니다.`
+    );
+    return;
+  }
+
+  setBidMessage(
+    `${amount.toLocaleString()}원 입찰을 요청할 준비가 되었습니다.`
+  );
   };
 
   return (
@@ -60,10 +87,24 @@ function ProductDetail() {
 
             <p>마감 시각: {product.endAt}</p>
           </div>
-
-          <button type="button" onClick={handleBid}>
-            {product.bidUnit.toLocaleString()}원 입찰
+          <input
+            type="number"
+            value={bidAmount}
+            onChange={(e) => setBidAmount(e.target.value)}
+            placeholder="입찰 금액을 입력하세요"
+          />
+          <button
+            type="button"
+            onClick={handleBid}
+            disabled={isBidding}
+          >
+            {isBidding ? "입찰 처리 중..." : "입찰하기"}
           </button>
+          {bidMessage && (
+            <p className="bid-message">
+              {bidMessage}
+            </p>
+          )}
         </div>
       </div>
     </main>
