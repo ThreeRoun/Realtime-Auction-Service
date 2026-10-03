@@ -62,10 +62,9 @@ BidService가 진 입찰 기록도 롤백 없이 남기도록 설계돼 있어(�
 ### 미구현 (다음 단계)
 
 - `productEndAt`, `productCurrentPrice` 필드는 응답에 없음. 최신 현재가/마감시각은 `GET /api/products`로 별도 조회해야 한다.
-- 낙찰 확정(크레딧 차감)과 상태 자동 전이 스케줄러는 아직 없음 (이슈 #21, #22 참고).
 
 ## 실시간 반영
 
-입찰 성공 시(`isValid: true`) Redis Pub/Sub 단일 채널 `auction_events`로 `bid_placed` 이벤트를 발행한다. `isValid: false`(진 입찰)는 발행하지 않는다. 마감이 연장되면(`extended: true`) `auction_extended` 이벤트도 함께 발행한다.
+입찰 성공 시(`isValid: true`) Redis Pub/Sub 단일 채널 `auction_events`로 `bid_placed` 이벤트를 발행한다. `isValid: false`(진 입찰)는 발행하지 않는다. 마감이 연장되면(`extended: true`) `auction_extended` 이벤트도 함께 발행하고, 마감 스케줄러가 상품을 닫으면 `auction_closed` 이벤트도 발행한다 (낙찰/유찰 모두, 자세한 건 `auction-closing.md` 참고).
 
 B(실시간 중계)가 이 채널 하나만 구독해 모든 이벤트를 받고, 받은 메시지를 그대로(pass-through) 브라우저에 전달하므로 payload에 `event` 필드(예: `"bid_placed"`)가 반드시 포함되어야 이벤트 종류를 구분할 수 있다. 이벤트 스펙은 [README.md](../../README.md)의 "WebSocket 이벤트" 섹션 참고 (`bid_placed`, `auction_extended`, `auction_closed`).
