@@ -9,4 +9,8 @@ import java.util.UUID;
 public interface BidRepository extends JpaRepository<Bid, UUID> {
 
     List<Bid> findByProductId(UUID productId);
+
+    // 낙찰 처리용: 유효한 입찰을 금액 높은 순으로 - 1순위 크레딧 부족하면 2순위로 넘어가며 시도
+    // (Bid 엔티티의 실제 필드명이 valid라서 isValid가 아니라 Valid로 참조해야 한다 - getter만 isValid())
+    List<Bid> findByProductIdAndValidTrueOrderByAmountDesc(UUID productId);
 }
