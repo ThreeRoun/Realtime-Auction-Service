@@ -12,6 +12,7 @@ import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -23,6 +24,8 @@ import org.springframework.http.HttpStatus;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+
+import static com.threeroun.auctionengine.security.JwtAuthenticationFilter.AUTH_USER_ID_ATTRIBUTE;
 
 @RestController
 @RequestMapping("/api/products")
@@ -78,9 +81,10 @@ public class ProductController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public ProductResponse create(@Valid @RequestBody ProductCreateRequest request) {
-        User seller = userRepository.findById(request.sellerId())
-                .orElseThrow(() -> new UserNotFoundException(request.sellerId()));
+    public ProductResponse create(@Valid @RequestBody ProductCreateRequest request,
+                                   @RequestAttribute(AUTH_USER_ID_ATTRIBUTE) UUID sellerId) {
+        User seller = userRepository.findById(sellerId)
+                .orElseThrow(() -> new UserNotFoundException(sellerId));
 
         // 프론트 상품 등록 폼에 시작 시각 입력란이 없어서(등록하면 바로 시작한다고 가정) startAt 생략을 허용하고,
         // 생략됐으면 "지금"으로 채운다.

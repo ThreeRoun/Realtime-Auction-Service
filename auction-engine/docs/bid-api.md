@@ -2,17 +2,18 @@
 
 ## POST /api/bids
 
-입찰을 등록한다.
+입찰을 등록한다. **인증 필요** — `Authorization: Bearer <로그인으로 받은 토큰>` 헤더가 있어야
+한다. 입찰자(bidderId)는 더 이상 body로 받지 않고, 이 토큰에서 추출한다.
 
 ### 요청
 
 ```http
 POST /api/bids
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
 Content-Type: application/json
 
 {
   "productId": "11111111-1111-1111-1111-111111111111",
-  "bidderId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
   "amount": 15000
 }
 ```
@@ -20,7 +21,6 @@ Content-Type: application/json
 | 필드 | 타입 | 설명 |
 | --- | --- | --- |
 | productId | UUID | 입찰 대상 상품 ID. |
-| bidderId | UUID | 입찰자 ID. 이번 MVP엔 별도 인증 체계가 없어 요청 바디로 직접 받는다. |
 | amount | integer | 입찰 금액. `현재가(current_price) + 최소 입찰 단위(bid_unit)` 이상이어야 유효하게 처리된다. |
 
 ### 응답 - 성공 (201 Created)
@@ -55,14 +55,14 @@ BidService가 진 입찰 기록도 롤백 없이 남기도록 설계돼 있어(�
 
 | code | HTTP status | 설명 |
 | --- | --- | --- |
+| UNAUTHORIZED | 401 | Authorization 헤더가 없거나 토큰이 유효하지 않음(서명 불일치/만료) |
 | PRODUCT_NOT_FOUND | 404 | 존재하지 않는 상품 |
 | AUCTION_NOT_IN_PROGRESS | 409 | 상품 status가 진행중/마감연장이 아님 (아직 시작 전이거나 이미 종료됨) |
-| INVALID_REQUEST | 400 | productId/bidderId 누락, amount 누락/0 이하 등 요청 형식 자체가 잘못됨 |
+| INVALID_REQUEST | 400 | productId 누락, amount 누락/0 이하 등 요청 형식 자체가 잘못됨 |
 
 ### 미구현 (다음 단계)
 
 - `productEndAt`, `productCurrentPrice` 필드는 응답에 없음. 최신 현재가/마감시각은 `GET /api/products`로 별도 조회해야 한다.
-- 낙찰 확정(크레딧 차감)과 상태 자동 전이 스케줄러는 아직 없음 (이슈 #21, #22 참고).
 
 ## 실시간 반영
 
