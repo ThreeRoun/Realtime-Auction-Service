@@ -84,7 +84,6 @@ function ProductDetail() {
   try {
     const result = await placeBid({
       productId: product.id,
-      bidderId: "e0846e26-aa29-40f5-ae37-bd4f21e59958",
       amount,
     });
 
