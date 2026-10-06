@@ -1,6 +1,5 @@
 export interface BidRequest {
   productId: string;
-  bidderId: string;
   amount: number;
 }
 
@@ -16,10 +15,17 @@ export interface BidResponse {
 export async function placeBid(
   request: BidRequest
 ): Promise<BidResponse> {
+  const accessToken = localStorage.getItem("accessToken");
+
+  if (!accessToken) {
+    throw new Error("로그인이 필요합니다.");
+  }
+
   const response = await fetch("/api/bids", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
     },
     body: JSON.stringify(request),
   });
