@@ -3,11 +3,14 @@ package com.threeroun.auctionengine.controller;
 import com.threeroun.auctionengine.domain.Product;
 import com.threeroun.auctionengine.domain.ProductStatus;
 import com.threeroun.auctionengine.domain.User;
+import com.threeroun.auctionengine.repository.BidRepository;
 import com.threeroun.auctionengine.repository.ProductRepository;
 import com.threeroun.auctionengine.repository.UserRepository;
+import com.threeroun.auctionengine.service.ProductNotFoundException;
 import com.threeroun.auctionengine.service.UserNotFoundException;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -19,6 +22,7 @@ import org.springframework.http.HttpStatus;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/products")
@@ -31,10 +35,13 @@ public class ProductController {
 
     private final ProductRepository productRepository;
     private final UserRepository userRepository;
+    private final BidRepository bidRepository;
 
-    public ProductController(ProductRepository productRepository, UserRepository userRepository) {
+    public ProductController(ProductRepository productRepository, UserRepository userRepository,
+                              BidRepository bidRepository) {
         this.productRepository = productRepository;
         this.userRepository = userRepository;
+        this.bidRepository = bidRepository;
     }
 
     @GetMapping
@@ -48,6 +55,25 @@ public class ProductController {
             products = productRepository.findByStatusOrderByEndAtAsc(parseStatus(status));
         }
         return products.stream().map(ProductResponse::from).toList();
+    }
+
+    @GetMapping("/{id}")
+    public ProductResponse detail(@PathVariable UUID id) {
+        Product product = productRepository.findById(id)
+                .orElseThrow(() -> new ProductNotFoundException(id));
+        return ProductResponse.from(product);
+    }
+
+    // 입찰 로그 테이블 전체를 그대로 보여준다 (진 입찰 포함) - README의 "로그 테이블" 방침대로
+    // 입찰 이력/증빙 용도로 쓰기 위함.
+    @GetMapping("/{id}/bids")
+    public List<BidHistoryResponse> bidHistory(@PathVariable UUID id) {
+        if (!productRepository.existsById(id)) {
+            throw new ProductNotFoundException(id);
+        }
+        return bidRepository.findByProductIdOrderByBidAtDesc(id).stream()
+                .map(BidHistoryResponse::from)
+                .toList();
     }
 
     @PostMapping
