@@ -151,6 +151,7 @@ wss.on('connection', (ws, req)=>{
   }
   // productId 방의 소켓 모음 Set에 새로운 소켓(손님)을 추가한다. 
   rooms.get(cleanProductId).add(ws);
+  console.log(`[클라이언트 접속] 방: ${cleanProductId} (현재 인원: ${rooms.get(cleanProductId).size}명)`);   // ← 추가
   // 손님에게 환영 메세지를 보낸다. 
   ws.send(JSON.stringify({
     event: 'connected',
