@@ -17,7 +17,7 @@ Markdown
 
 ### 1. 접속 엔드포인트 (Client -> Server)
 - **URL:** `ws://{HOST}:{PORT}?productId={productId}`
-- **로컬 테스트 주소:** `ws://localhost:8080?productId=101`
+- **로컬 테스트 주소:** `ws://localhost:4000?productId=101`
 - **Query Parameter:**
   - `productId` (필수): 입장하려는 경매 상품의 고유 ID
 
