@@ -1,0 +1,10 @@
+{
+  "ignores": [
+    "**/node_modules/**",
+    "**/.gradle/**",
+    "**/build/**"
+  ],
+  "config": {
+    "MD013": false
+  }
+}

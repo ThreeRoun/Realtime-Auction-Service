@@ -1,4 +1,3 @@
-Markdown
 # 📡 Realtime Relay Engine (실시간 중계 엔진)
 
 경매 상품별 접속자를 방(Room) 단위로 격리 관리하고, 경매 엔진(A)에서 Redis Pub/Sub으로 발행된 입찰 이벤트를 해당 방의 모든 웹소켓 클라이언트(C)에게 실시간으로 브로드캐스트하는 Node.js 기반 중계 서버입니다.
@@ -6,6 +5,7 @@ Markdown
 ---
 
 ## 🛠 Tech Stack
+
 - **Runtime:** Node.js (v20+)
 - **WebSocket:** `ws` (RFC 6455 표준 고성능 순수 WebSocket)
 - **Pub/Sub Client:** `ioredis`
@@ -16,13 +16,16 @@ Markdown
 ## 🔌 WebSocket Connection Specification
 
 ### 1. 접속 엔드포인트 (Client -> Server)
+
 - **URL:** `ws://{HOST}:{PORT}?productId={productId}`
 - **로컬 테스트 주소:** `ws://localhost:8080?productId=101`
 - **Query Parameter:**
   - `productId` (필수): 입장하려는 경매 상품의 고유 ID
 
 ### 2. 접속 성공 핸드셰이크 응답 (Server -> Client)
+
 소켓 연결 수립 즉시 클라이언트로 전달되는 최초 환영 메시지입니다.
+
 ```json
 {
   "event": "connected",

@@ -5,14 +5,72 @@ on:
     branches: [main, baseline]
 
 jobs:
-  lint:
+  markdown:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # TODO: 각 서비스 코드가 추가되면 서비스별 린트(Checkstyle/ESLint 등)로 확장
       - name: Lint Markdown docs
         uses: DavidAnson/markdownlint-cli2-action@v24
         with:
           globs: "**/*.md"
+
+  auction-engine:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Run Checkstyle
+        working-directory: auction-engine
+        run: ./gradlew checkstyleMain checkstyleTest
+
+  realtime-relay:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: realtime-relay/package-lock.json
+
+      - name: Install dependencies
+        working-directory: realtime-relay
+        run: npm ci
+
+      - name: Run ESLint
+        working-directory: realtime-relay
+        run: npm run lint
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run ESLint
+        working-directory: frontend
+        run: npm run lint

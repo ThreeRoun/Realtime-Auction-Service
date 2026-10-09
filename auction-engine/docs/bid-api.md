@@ -6,7 +6,7 @@
 
 ### 요청
 
-```
+```http
 POST /api/bids
 Content-Type: application/json
 
