@@ -198,4 +198,56 @@ class ProductControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    void 상품_상세_조회에_성공한다() throws Exception {
+        User seller = seller();
+        Product product = product(seller, ProductStatus.IN_PROGRESS, LocalDateTime.now().plusHours(1));
+
+        String response = mockMvc.perform(get("/api/products/{id}", product.getId()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        Map<?, ?> body = objectMapper.readValue(response, Map.class);
+        assertThat(body.get("id")).isEqualTo(product.getId().toString());
+        assertThat(body.get("title")).isEqualTo(product.getTitle());
+    }
+
+    @Test
+    void 존재하지_않는_상품을_상세조회하면_404를_반환한다() throws Exception {
+        mockMvc.perform(get("/api/products/{id}", UUID.randomUUID()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void 입찰_이력을_최신순으로_조회한다() throws Exception {
+        User seller = seller();
+        User bidder = seller(); // 그냥 또 다른 유저 하나 필요해서 재사용
+        Product product = product(seller, ProductStatus.IN_PROGRESS, LocalDateTime.now().plusHours(1));
+
+        Map<String, Object> firstBid = Map.of(
+                "productId", product.getId().toString(), "bidderId", bidder.getId().toString(), "amount", 11000);
+        Map<String, Object> secondBid = Map.of(
+                "productId", product.getId().toString(), "bidderId", bidder.getId().toString(), "amount", 12000);
+        mockMvc.perform(post("/api/bids").contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(firstBid))).andExpect(status().isCreated());
+        mockMvc.perform(post("/api/bids").contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(secondBid))).andExpect(status().isCreated());
+
+        String response = mockMvc.perform(get("/api/products/{id}/bids", product.getId()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        List<Map<String, Object>> bids = objectMapper.readValue(response, List.class);
+        assertThat(bids).hasSize(2);
+        // 최신(나중에 넣은 12000원)이 먼저 나와야 한다
+        assertThat(((Number) bids.get(0).get("amount")).intValue()).isEqualTo(12000);
+        assertThat(((Number) bids.get(1).get("amount")).intValue()).isEqualTo(11000);
+    }
+
+    @Test
+    void 존재하지_않는_상품의_입찰이력을_조회하면_404를_반환한다() throws Exception {
+        mockMvc.perform(get("/api/products/{id}/bids", UUID.randomUUID()))
+                .andExpect(status().isNotFound());
+    }
 }

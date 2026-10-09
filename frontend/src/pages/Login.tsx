@@ -1,14 +1,23 @@
 import { useState } from "react";
+import { login } from "../api/auth";
+import { useNavigate } from "react-router-dom";
 
 function Login() {
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const navigate = useNavigate();
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    // TODO: 백엔드 로그인 API 연결
-    console.log("로그인 시도", { email, password });
+    try {
+      const result = await login({ username, password });
+      localStorage.setItem("accessToken", result.accessToken);
+      console.log("로그인 성공");
+      navigate("/");
+    } catch (error) {
+      console.error("로그인 실패", error);
+    }
   };
 
   return (
@@ -18,13 +27,13 @@ function Login() {
         <p>실시간 경매 서비스에 로그인하세요.</p>
 
         <form className="login-form" onSubmit={handleSubmit}>
-          <label htmlFor="email">이메일</label>
+          <label htmlFor="username">사용자 이름</label>
           <input
-            id="email"
-            type="email"
-            placeholder="example@email.com"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
+            id="username"
+            type="text"
+            placeholder="사용자 이름을 입력하세요"
+            value={username}
+            onChange={(event) => setUsername(event.target.value)}
             required
           />
 

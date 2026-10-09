@@ -1,6 +1,8 @@
 package com.threeroun.auctionengine.controller;
 
 import com.threeroun.auctionengine.service.AuctionNotInProgressException;
+import com.threeroun.auctionengine.service.DuplicateUserException;
+import com.threeroun.auctionengine.service.InvalidCredentialsException;
 import com.threeroun.auctionengine.service.ProductNotFoundException;
 import com.threeroun.auctionengine.service.UserNotFoundException;
 import org.springframework.http.HttpStatus;
@@ -31,6 +33,18 @@ public class ApiExceptionHandler {
     @ResponseStatus(HttpStatus.CONFLICT)
     public ErrorResponse handleAuctionNotInProgress(AuctionNotInProgressException e) {
         return new ErrorResponse("AUCTION_NOT_IN_PROGRESS", e.getMessage());
+    }
+
+    @ExceptionHandler(DuplicateUserException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleDuplicateUser(DuplicateUserException e) {
+        return new ErrorResponse("DUPLICATE_USER", e.getMessage());
+    }
+
+    @ExceptionHandler(InvalidCredentialsException.class)
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    public ErrorResponse handleInvalidCredentials(InvalidCredentialsException e) {
+        return new ErrorResponse("INVALID_CREDENTIALS", e.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
