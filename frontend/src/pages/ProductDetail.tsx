@@ -4,12 +4,17 @@ import type { Product } from "../data/products";
 import { placeBid } from "../api/bids";
 import {
   connectAuctionSocket,
-  type BidPlacedEvent,
+  type SocketStatus,
 } from "../websocket/auctionSocket";
 
 function ProductDetail() {
   const { id } = useParams();
   const [product, setProduct] = useState<Product | null>(null);
+  const [currentPrice, setCurrentPrice] = useState(0);
+  const [bidAmount, setBidAmount] = useState("");
+  const [isBidding, setIsBidding] = useState(false);
+  const [bidMessage, setBidMessage] = useState("");
+  const [socketStatus, setSocketStatus] = useState<SocketStatus>("connecting");
   useEffect(() => {
     fetch("/api/products?status=all")
     .then((response) => response.json())
@@ -28,30 +33,38 @@ function ProductDetail() {
     });
   }, [id]);
 
+  const productId = product?.id;
+
   useEffect(() => {
-    if (!product) {
+    if (!productId) {
       return;
     }
 
-    const socket = connectAuctionSocket(product.id);
-
-    socket.onmessage = (event) => {
-      const data: BidPlacedEvent = JSON.parse(event.data);
-
-      if (data.event === "bid_placed") {
-        setCurrentPrice(data.current_price);
-      }
-    };
+    const connection = connectAuctionSocket(productId, {
+      onEvent: (data) => {
+        if (data.event === "bid_placed") {
+          setCurrentPrice(data.current_price);
+        }
+      },
+      // 끊겨 있던 동안 놓친 입찰을 REST로 다시 불러와 현재가를 맞춘다
+      onReconnect: () => {
+        fetch(`/api/products/${productId}`)
+          .then((response) => response.json())
+          .then((latest: Product) => {
+            setCurrentPrice(latest.currentPrice);
+          })
+          .catch((error) => {
+            console.error("재연결 후 상품 정보 동기화 실패:", error);
+          });
+      },
+      onStatusChange: setSocketStatus,
+    });
 
     return () => {
-      socket.close();
+      connection.close();
     };
-  }, [product]);
+  }, [productId]);
 
-  const [currentPrice, setCurrentPrice] = useState(0);
-  const [bidAmount, setBidAmount] = useState("");
-  const [isBidding, setIsBidding] = useState(false);
-  const [bidMessage, setBidMessage] = useState("");
 
   if (!product) {
     return (
@@ -117,6 +130,17 @@ function ProductDetail() {
         <div className="product-detail-info">
           <h1>{product.title}</h1>
           <p>{product.description}</p>
+
+          {socketStatus === "reconnecting" && (
+            <p className="socket-status">
+              실시간 연결이 끊겨 다시 연결하는 중입니다...
+            </p>
+          )}
+          {socketStatus === "closed" && (
+            <p className="socket-status">
+              실시간 연결이 끊겼습니다. 새로고침해 주세요.
+            </p>
+          )}
 
           <div className="bid-info">
             <p>
