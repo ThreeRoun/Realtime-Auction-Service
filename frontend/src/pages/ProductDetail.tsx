@@ -50,7 +50,7 @@ function ProductDetail() {
 
   const [currentPrice, setCurrentPrice] = useState(0);
   const [bidAmount, setBidAmount] = useState("");
-  const [isBidding] = useState(false);
+  const [isBidding, setIsBidding] = useState(false);
   const [bidMessage, setBidMessage] = useState("");
 
   if (!product) {
@@ -82,6 +82,8 @@ function ProductDetail() {
   }
 
   try {
+    setIsBidding(true);
+
     const result = await placeBid({
       productId: product.id,
       amount,
@@ -89,12 +91,19 @@ function ProductDetail() {
 
     if (result.isValid) {
       setBidMessage(`${amount.toLocaleString()}원 입찰에 성공했습니다.`);
+      setBidAmount("");
     } else {
       setBidMessage("유효하지 않은 입찰입니다.");
     }
   } catch (error) {
     console.error("입찰 요청 실패:", error);
-    setBidMessage("입찰 요청 중 오류가 발생했습니다.");
+    setBidMessage(
+      error instanceof Error
+        ? error.message
+        : "입찰 요청 중 오류가 발생했습니다."
+    );
+  } finally {
+    setIsBidding(false);
   }
   };
 
