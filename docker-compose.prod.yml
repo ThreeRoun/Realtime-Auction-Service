@@ -32,6 +32,9 @@ services:
     image: ${ECR_REGISTRY}/auction-engine:${IMAGE_TAG}
     container_name: auction-engine
     restart: unless-stopped
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://auction-db:5432/auction
+      - SPRING_DATA_REDIS_HOST=auction-redis
     ports:
       - "8080:8080"
     depends_on:
@@ -44,6 +47,10 @@ services:
     image: ${ECR_REGISTRY}/realtime-relay:${IMAGE_TAG}
     container_name: realtime-relay
     restart: unless-stopped
+    environment:
+      - REDIS_HOST=auction-redis
+      - REDIS_PORT=6379
+      - PORT=4000
     ports:
       - "4000:4000"
     depends_on:
