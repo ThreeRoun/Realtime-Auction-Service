@@ -5,6 +5,7 @@
 ---
 
 ## 🛠 Tech Stack
+
 - **Runtime:** Node.js (v20+)
 - **WebSocket:** `ws` (RFC 6455 표준 순수 WebSocket)
 - **Pub/Sub Client:** `ioredis`
@@ -14,6 +15,7 @@
 ## 🔌 WebSocket Connection Specification
 
 ### 1. 접속 엔드포인트 (Client → Server)
+
 - **URL:** `ws://{HOST}:{PORT}?productId={productId}`
 - **로컬 테스트 주소:** `ws://localhost:4000?productId={상품 UUID}`
 - **Query Parameter:**
@@ -21,6 +23,7 @@
   - 누락 시 서버가 `1008` 코드로 연결을 종료합니다.
 
 ### 2. 접속 성공 응답 (Server → Client)
+
 소켓 연결 수립 즉시 전달되는 최초 메시지입니다.
 
 ```json
@@ -39,6 +42,7 @@
 > 시각 필드는 타임존 정보가 없는 ISO-8601 형식(`LocalDateTime`)입니다. 예: `2026-10-07T12:00:00`
 
 ### 1. `bid_placed` (입찰 성공 시)
+
 ```json
 {
   "event": "bid_placed",
@@ -50,7 +54,9 @@
 ```
 
 ### 2. `auction_extended` (마감 연장 시)
+
 안티 스나이핑(마감 직전 입찰)으로 마감 시각이 연장되었을 때 발생합니다.
+
 ```json
 {
   "event": "auction_extended",
@@ -60,7 +66,9 @@
 ```
 
 ### 3. `auction_closed` (마감 확정 시)
+
 유찰된 경우 `winner_id`와 `final_price`는 `null`일 수 있습니다.
+
 ```json
 {
   "event": "auction_closed",
@@ -75,6 +83,7 @@
 ## 🚀 Local Run (로컬 실행 방법)
 
 ### 환경 변수
+
 | 변수 | 기본값 | 설명 |
 | --- | --- | --- |
 | `PORT` | `4000` | WebSocket 서버 포트 |
@@ -82,6 +91,7 @@
 | `REDIS_PORT` | `6379` | Redis 포트 |
 
 ### 실행 방법
+
 ```bash
 # 1. 프로젝트 루트에서 Redis 컨테이너 기동
 docker compose up -d redis
@@ -96,6 +106,7 @@ REDIS_HOST=localhost node server.js
 `✅ [Redis] 'auction_events' 채널 구독 완료!` 로그가 보이면 정상입니다.
 
 ### 단독 동작 확인
+
 ```bash
 # 터미널 A: 클라이언트 접속
 npx wscat -c "ws://localhost:4000?productId=test-room"
@@ -106,6 +117,7 @@ docker exec -it auction-redis redis-cli PUBLISH auction_events \
 ```
 
 ### ⚠️ Troubleshooting
+
 - **PUBLISH 결과가 `(integer) 0`이고 이벤트가 오지 않음**
   Mac에 Homebrew 등으로 설치한 Redis가 켜져 있으면, `localhost:6379` 연결이 도커 Redis가 아닌 로컬 Redis로 갑니다. `lsof -nP -iTCP:6379 -sTCP:LISTEN`으로 `redis-server`가 보이면 `brew services stop redis`로 끈 뒤 relay(와 엔진)를 재시작하세요.
 - **`❌ [Redis 연결 오류]`가 반복됨**
