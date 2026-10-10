@@ -13,6 +13,7 @@ function Login() {
     try {
       const result = await login({ username, password });
       localStorage.setItem("accessToken", result.accessToken);
+      window.dispatchEvent(new Event("auth-change"));
       console.log("로그인 성공");
       navigate("/");
     } catch (error) {
