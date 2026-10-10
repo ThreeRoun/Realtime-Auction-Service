@@ -1,5 +1,6 @@
 package com.threeroun.auctionengine.service;
 
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
@@ -37,5 +38,20 @@ public class JwtService {
 
     public long getExpirationMinutes() {
         return expirationMinutes;
+    }
+
+    // 토큰 서명/만료를 검증하고 발급 시 담았던 user id를 꺼낸다. 서명이 안 맞거나 만료됐거나
+    // subject가 UUID 형식이 아니면 전부 InvalidTokenException으로 통일해서 던진다 - 호출하는
+    // 쪽(JwtAuthenticationFilter)이 실패 이유를 세분화해서 다룰 필요가 없기 때문이다.
+    public UUID parseUserId(String token) {
+        try {
+            String subject = Jwts.parser().verifyWith(key).build()
+                    .parseSignedClaims(token)
+                    .getPayload()
+                    .getSubject();
+            return UUID.fromString(subject);
+        } catch (JwtException | IllegalArgumentException e) {
+            throw new InvalidTokenException();
+        }
     }
 }

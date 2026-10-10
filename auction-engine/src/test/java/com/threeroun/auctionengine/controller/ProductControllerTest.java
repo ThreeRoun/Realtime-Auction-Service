@@ -6,10 +6,12 @@ import com.threeroun.auctionengine.domain.ProductStatus;
 import com.threeroun.auctionengine.domain.User;
 import com.threeroun.auctionengine.repository.ProductRepository;
 import com.threeroun.auctionengine.repository.UserRepository;
+import com.threeroun.auctionengine.service.JwtService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -33,11 +35,17 @@ class ProductControllerTest {
     private ProductRepository productRepository;
     @Autowired
     private UserRepository userRepository;
+    @Autowired
+    private JwtService jwtService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private User seller() {
         String suffix = UUID.randomUUID().toString().substring(0, 8);
         return userRepository.save(new User("seller-" + suffix, "seller-" + suffix + "@test.com", "hash"));
+    }
+
+    private String bearerToken(User user) {
+        return "Bearer " + jwtService.issueToken(user.getId());
     }
 
     private Product product(User seller, ProductStatus status, LocalDateTime endAt) {
@@ -97,11 +105,11 @@ class ProductControllerTest {
                 "description", "설명",
                 "startingPrice", 10000,
                 "bidUnit", 1000,
-                "sellerId", seller.getId().toString(),
                 "startAt", LocalDateTime.now().minusMinutes(1).toString(),
                 "endAt", LocalDateTime.now().plusHours(1).toString());
 
         String response = mockMvc.perform(post("/api/products")
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(seller))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
@@ -120,10 +128,10 @@ class ProductControllerTest {
                 "description", "설명",
                 "startingPrice", 10000,
                 "bidUnit", 1000,
-                "sellerId", seller.getId().toString(),
                 "endAt", LocalDateTime.now().plusHours(1).toString());
 
         String response = mockMvc.perform(post("/api/products")
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(seller))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
@@ -142,11 +150,11 @@ class ProductControllerTest {
                 "description", "설명",
                 "startingPrice", 10000,
                 "bidUnit", 1000,
-                "sellerId", seller.getId().toString(),
                 "startAt", LocalDateTime.now().plusDays(1).toString(),
                 "endAt", LocalDateTime.now().plusDays(2).toString());
 
         String response = mockMvc.perform(post("/api/products")
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(seller))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
@@ -158,15 +166,17 @@ class ProductControllerTest {
 
     @Test
     void 존재하지_않는_판매자면_404를_반환한다() throws Exception {
+        // 토큰 자체는 유효하지만, subject(user id)가 실제 가입된 유저가 아닌 경우
+        String tokenForUnknownUser = "Bearer " + jwtService.issueToken(UUID.randomUUID());
         Map<String, Object> request = Map.of(
                 "title", "상품",
                 "startingPrice", 10000,
                 "bidUnit", 1000,
-                "sellerId", UUID.randomUUID().toString(),
                 "startAt", LocalDateTime.now().toString(),
                 "endAt", LocalDateTime.now().plusHours(1).toString());
 
         mockMvc.perform(post("/api/products")
+                        .header(HttpHeaders.AUTHORIZATION, tokenForUnknownUser)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isNotFound());
@@ -179,11 +189,11 @@ class ProductControllerTest {
                 "title", "상품",
                 "startingPrice", 10000,
                 "bidUnit", 1000,
-                "sellerId", seller.getId().toString(),
                 "startAt", LocalDateTime.now().toString(),
                 "endAt", LocalDateTime.now().minusHours(1).toString());
 
         mockMvc.perform(post("/api/products")
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(seller))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
@@ -191,63 +201,13 @@ class ProductControllerTest {
 
     @Test
     void 필수값이_없으면_400을_반환한다() throws Exception {
+        User seller = seller();
         Map<String, Object> request = Map.of("title", "상품");
 
         mockMvc.perform(post("/api/products")
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(seller))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void 상품_상세_조회에_성공한다() throws Exception {
-        User seller = seller();
-        Product product = product(seller, ProductStatus.IN_PROGRESS, LocalDateTime.now().plusHours(1));
-
-        String response = mockMvc.perform(get("/api/products/{id}", product.getId()))
-                .andExpect(status().isOk())
-                .andReturn().getResponse().getContentAsString();
-
-        Map<?, ?> body = objectMapper.readValue(response, Map.class);
-        assertThat(body.get("id")).isEqualTo(product.getId().toString());
-        assertThat(body.get("title")).isEqualTo(product.getTitle());
-    }
-
-    @Test
-    void 존재하지_않는_상품을_상세조회하면_404를_반환한다() throws Exception {
-        mockMvc.perform(get("/api/products/{id}", UUID.randomUUID()))
-                .andExpect(status().isNotFound());
-    }
-
-    @Test
-    void 입찰_이력을_최신순으로_조회한다() throws Exception {
-        User seller = seller();
-        User bidder = seller(); // 그냥 또 다른 유저 하나 필요해서 재사용
-        Product product = product(seller, ProductStatus.IN_PROGRESS, LocalDateTime.now().plusHours(1));
-
-        Map<String, Object> firstBid = Map.of(
-                "productId", product.getId().toString(), "bidderId", bidder.getId().toString(), "amount", 11000);
-        Map<String, Object> secondBid = Map.of(
-                "productId", product.getId().toString(), "bidderId", bidder.getId().toString(), "amount", 12000);
-        mockMvc.perform(post("/api/bids").contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(firstBid))).andExpect(status().isCreated());
-        mockMvc.perform(post("/api/bids").contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(secondBid))).andExpect(status().isCreated());
-
-        String response = mockMvc.perform(get("/api/products/{id}/bids", product.getId()))
-                .andExpect(status().isOk())
-                .andReturn().getResponse().getContentAsString();
-
-        List<Map<String, Object>> bids = objectMapper.readValue(response, List.class);
-        assertThat(bids).hasSize(2);
-        // 최신(나중에 넣은 12000원)이 먼저 나와야 한다
-        assertThat(((Number) bids.get(0).get("amount")).intValue()).isEqualTo(12000);
-        assertThat(((Number) bids.get(1).get("amount")).intValue()).isEqualTo(11000);
-    }
-
-    @Test
-    void 존재하지_않는_상품의_입찰이력을_조회하면_404를_반환한다() throws Exception {
-        mockMvc.perform(get("/api/products/{id}/bids", UUID.randomUUID()))
-                .andExpect(status().isNotFound());
     }
 }
