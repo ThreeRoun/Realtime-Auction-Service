@@ -1,11 +1,21 @@
-# 경매 엔진 (Java/Kotlin + Spring Boot) - 초안 뼈대
-# TODO: 실제 소스가 추가되면 Gradle/Maven 멀티스테이지 빌드로 교체
-FROM eclipse-temurin:21-jre-jammy
+# 빌드 스테이지: Gradle로 jar 빌드
+FROM eclipse-temurin:21-jdk-jammy AS build
 
 WORKDIR /app
 
-# TODO: 빌드된 jar 복사 (예: COPY build/libs/*.jar app.jar)
-EXPOSE 8080
+COPY gradlew .
+COPY gradle gradle
+COPY build.gradle settings.gradle ./
+RUN chmod +x gradlew
 
-# TODO: 실제 애플리케이션 실행으로 교체 (예: java -jar app.jar)
-CMD ["sh", "-c", "echo 'auction-engine placeholder running' && tail -f /dev/null"]
+COPY src src
+RUN ./gradlew --no-daemon bootJar
+
+# 실행 스테이지: 빌드된 jar만 가지고 실행 (빌드 도구는 이미지에 안 남김)
+FROM eclipse-temurin:21-jre-jammy
+
+WORKDIR /app
+COPY --from=build /app/build/libs/*.jar app.jar
+
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "app.jar"]
