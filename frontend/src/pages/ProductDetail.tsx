@@ -11,6 +11,10 @@ function ProductDetail() {
   const { id } = useParams();
   const [product, setProduct] = useState<Product | null>(null);
   const [currentPrice, setCurrentPrice] = useState(0);
+  const [endAt, setEndAt] = useState("");
+  const [isAuctionClosed, setIsAuctionClosed] = useState(false);
+  const [winnerId, setWinnerId] = useState<string | null>(null);
+  const [finalPrice, setFinalPrice] = useState<number | null>(null);
   const [bidAmount, setBidAmount] = useState("");
   const [isBidding, setIsBidding] = useState(false);
   const [bidMessage, setBidMessage] = useState("");
@@ -24,6 +28,7 @@ function ProductDetail() {
       if (foundProduct) {
         setProduct(foundProduct);
         setCurrentPrice(foundProduct.currentPrice);
+        setEndAt(foundProduct.endAt);
       } else {
         setProduct(null);
       }
@@ -44,6 +49,16 @@ function ProductDetail() {
       onEvent: (data) => {
         if (data.event === "bid_placed") {
           setCurrentPrice(data.current_price);
+        }
+
+        if (data.event === "auction_extended") {
+          setEndAt(data.new_end_at);
+        }
+
+        if (data.event === "auction_closed") {
+          setIsAuctionClosed(true);
+          setWinnerId(data.winner_id);
+          setFinalPrice(data.final_price);
         }
       },
       // 끊겨 있던 동안 놓친 입찰을 REST로 다시 불러와 현재가를 맞춘다
@@ -155,7 +170,23 @@ function ProductDetail() {
               최소 입찰 단위: {product.bidUnit.toLocaleString()}원
             </p>
 
-            <p>마감 시각: {product.endAt}</p>
+            <p>마감 시각: {endAt}</p>
+            {isAuctionClosed && (
+              <div className="auction-result">
+                <h3>경매 종료</h3>
+
+                {winnerId !== null ? (
+                  <>
+                    <p>낙찰자 ID: {winnerId}</p>
+                    <p>
+                      최종 낙찰가: {finalPrice?.toLocaleString() ?? "정보 없음"}원
+                    </p>
+                  </>
+                ) : (
+                  <p>낙찰자가 없어 유찰되었습니다.</p>
+                )}
+              </div>
+            )}
           </div>
           <input
             type="number"
@@ -166,9 +197,13 @@ function ProductDetail() {
           <button
             type="button"
             onClick={handleBid}
-            disabled={isBidding}
+            disabled={isBidding || isAuctionClosed}
           >
-            {isBidding ? "입찰 처리 중..." : "입찰하기"}
+            {isAuctionClosed
+              ? "경매 종료"
+              : isBidding
+                ? "입찰 처리 중..."
+                : "입찰하기"}
           </button>
           {bidMessage && (
             <p className="bid-message">
