@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createProduct } from "../api/products";
 
 function ProductCreate() {
   const [title, setTitle] = useState("");
@@ -7,17 +8,27 @@ function ProductCreate() {
   const [bidUnit, setBidUnit] = useState("");
   const [endAt, setEndAt] = useState("");
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    // TODO: 백엔드 상품 등록 API 연결
-    console.log("상품 등록", {
-      title,
-      description,
-      startingPrice,
-      bidUnit,
-      endAt,
-    });
+    try {
+      await createProduct({
+        title,
+        description,
+        startingPrice: Number(startingPrice),
+        bidUnit: Number(bidUnit),
+        endAt,
+      });
+
+      alert("상품이 성공적으로 등록되었습니다.");
+    } catch (error) {
+      console.error("상품 등록 실패:", error);
+      alert(
+        error instanceof Error
+          ? error.message
+          : "상품 등록 중 오류가 발생했습니다."
+      );
+    }
   };
 
   return (
