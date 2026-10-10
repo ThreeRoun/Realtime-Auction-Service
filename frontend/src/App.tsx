@@ -7,6 +7,7 @@ import ProductCreate from "./pages/ProductCreate";
 import MyPage from "./pages/MyPage";
 import AuctionResult from "./pages/AuctionResult";
 import "./App.css";
+import Signup from "./pages/Signup";
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
         <Route path="/" element={<ProductList />} />
         <Route path="/products/:id" element={<ProductDetail />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<Signup />} />
         <Route path="/products/new" element={<ProductCreate />} />
         <Route path="/mypage" element={<MyPage />} />
         <Route path="/auction/result" element={<AuctionResult />} />
