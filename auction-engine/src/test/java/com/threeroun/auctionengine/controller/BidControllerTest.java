@@ -187,6 +187,21 @@ class BidControllerTest {
                 .andExpect(status().isUnauthorized());
     }
 
+    @Test
+    void 판매자_본인이_입찰하면_403을_반환한다() throws Exception {
+        User seller = user("seller");
+        Product product = productRepository.save(inProgressProduct(seller));
+        String requestBody = objectMapper.writeValueAsString(Map.of(
+                "productId", product.getId().toString(),
+                "amount", STARTING_PRICE + BID_UNIT));
+
+        mockMvc.perform(post("/api/bids")
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(seller))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isForbidden());
+    }
+
     private Product inProgressProduct(User seller) {
         Product product = new Product("테스트 상품", "설명", STARTING_PRICE, BID_UNIT,
                 seller, LocalDateTime.now().minusMinutes(1), LocalDateTime.now().plusHours(1));

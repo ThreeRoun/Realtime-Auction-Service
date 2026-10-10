@@ -4,6 +4,7 @@ import com.threeroun.auctionengine.service.AuctionNotInProgressException;
 import com.threeroun.auctionengine.service.DuplicateUserException;
 import com.threeroun.auctionengine.service.InvalidCredentialsException;
 import com.threeroun.auctionengine.service.ProductNotFoundException;
+import com.threeroun.auctionengine.service.SelfBidNotAllowedException;
 import com.threeroun.auctionengine.service.UserNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -45,6 +46,12 @@ public class ApiExceptionHandler {
     @ResponseStatus(HttpStatus.UNAUTHORIZED)
     public ErrorResponse handleInvalidCredentials(InvalidCredentialsException e) {
         return new ErrorResponse("INVALID_CREDENTIALS", e.getMessage());
+    }
+
+    @ExceptionHandler(SelfBidNotAllowedException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public ErrorResponse handleSelfBidNotAllowed(SelfBidNotAllowedException e) {
+        return new ErrorResponse("SELF_BID_NOT_ALLOWED", e.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
