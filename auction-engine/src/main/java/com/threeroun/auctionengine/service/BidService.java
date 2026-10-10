@@ -49,6 +49,11 @@ public class BidService {
             throw new AuctionNotInProgressException(productId, product.getStatus());
         }
 
+        // 판매자가 자기 상품에 입찰해서 가격을 띄우는 자전 거래(shill bidding) 방지
+        if (product.getSeller().getId().equals(bidderId)) {
+            throw new SelfBidNotAllowedException(productId);
+        }
+
         Bid bid = new Bid(product, userRepository.getReferenceById(bidderId), amount);
 
         int minNextBid = product.getCurrentPrice() + product.getBidUnit();
