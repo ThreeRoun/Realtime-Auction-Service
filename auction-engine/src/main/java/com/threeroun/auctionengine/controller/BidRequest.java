@@ -5,11 +5,10 @@ import jakarta.validation.constraints.Positive;
 
 import java.util.UUID;
 
-// bidderId를 body로 직접 받는 건 아직 인증 체계가 없는 MVP 임시방편.
-// 통합 단계에서 인증 토큰 기반으로 교체될 필드.
+// bidderId는 더 이상 body로 받지 않는다 - Authorization 헤더의 JWT에서 추출한다
+// (JwtAuthenticationFilter 참고).
 public record BidRequest(
         @NotNull UUID productId,
-        @NotNull UUID bidderId,
         @NotNull @Positive Integer amount
 ) {
 }

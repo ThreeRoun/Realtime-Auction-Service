@@ -4,17 +4,21 @@
 
 ## POST /api/products
 
-상품을 등록한다.
+상품을 등록한다. **인증 필요** — `Authorization: Bearer <로그인으로 받은 토큰>` 헤더가 있어야
+한다. 판매자(sellerId)는 더 이상 body로 받지 않고, 이 토큰에서 추출한다.
 
 ### 요청
 
-```json
+```http
+POST /api/products
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+Content-Type: application/json
+
 {
   "title": "무선 헤드폰",
   "description": "상태 좋은 무선 헤드폰입니다.",
   "startingPrice": 30000,
   "bidUnit": 5000,
-  "sellerId": "11111111-1111-1111-1111-111111111111",
   "startAt": "2026-09-26T10:00:00",
   "endAt": "2026-09-30T18:00:00"
 }
@@ -22,7 +26,6 @@
 
 | 필드 | 타입 | 설명 |
 | --- | --- | --- |
-| sellerId | UUID | 판매자 ID. bidderId와 마찬가지로 인증 체계가 없는 MVP 임시방편. |
 | startAt | datetime (선택) | 프론트 상품 등록 폼에 시작 시각 입력란이 없어서(등록하면 바로 시작한다고 가정) 선택값. 생략하면 서버가 현재 시각으로 채운다. |
 
 ### 응답 - 성공 (201 Created)
@@ -38,8 +41,9 @@ Product 객체 하나 (아래 GET 응답과 동일한 모양).
 
 | HTTP status | code | 설명 |
 | --- | --- | --- |
-| 404 | USER_NOT_FOUND | sellerId가 존재하지 않는 사용자 |
-| 400 | INVALID_REQUEST | title/startingPrice/bidUnit/sellerId/startAt/endAt 중 필수값 누락, 또는 형식 오류 |
+| 401 | UNAUTHORIZED | Authorization 헤더가 없거나 토큰이 유효하지 않음(서명 불일치/만료) |
+| 404 | USER_NOT_FOUND | 토큰의 사용자가 가입 후 삭제되는 등 실제로는 존재하지 않는 경우 |
+| 400 | INVALID_REQUEST | title/startingPrice/bidUnit/startAt/endAt 중 필수값 누락, 또는 형식 오류 |
 | 400 | (메시지만) | endAt이 startAt보다 앞이거나 같음 |
 
 ## GET /api/products
