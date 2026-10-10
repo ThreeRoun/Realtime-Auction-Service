@@ -43,12 +43,21 @@
   gap: 24px;
 }
 
-.navbar-menu a {
+.navbar-menu a,
+.navbar-menu button {
   color: #444;
   font-weight: 600;
 }
 
-.navbar-menu a:hover {
+.navbar-menu button {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.navbar-menu a:hover,
+.navbar-menu button:hover {
   color: #000;
 }
 
