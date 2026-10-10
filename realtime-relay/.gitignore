@@ -1,3 +1,3 @@
 node_modules/
 # realtime-relay 임시 테스트 스크립트 제외
-realtime-relay/test-*.js
+test-*.js
