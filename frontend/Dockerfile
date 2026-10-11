@@ -1,12 +1,25 @@
-# Frontend (React + TypeScript + Vite) - 초안 뼈대
-# TODO: 실제 소스가 추가되면 빌드 스테이지(npm ci && npm run build) + nginx 서빙으로 교체
-FROM node:20-alpine
+# 1단계: React + Vite 빌드
+FROM node:24-alpine AS build
 
 WORKDIR /app
 
-# TODO: COPY package*.json ./ && npm ci
-# TODO: COPY . . && npm run build
-EXPOSE 3000
+# 의존성 설치
+COPY package*.json ./
+RUN npm ci
 
-# TODO: 실제 dev/serve 명령으로 교체 (예: npm run dev -- --host)
-CMD ["node", "-e", "console.log('frontend placeholder running'); setInterval(() => {}, 1000)"]
+# 소스 복사 및 빌드
+COPY . .
+RUN npm run build
+
+# 2단계: Nginx로 정적 파일 제공
+FROM nginx:alpine
+
+# 빌드된 프론트엔드 파일 복사
+COPY --from=build /app/dist /usr/share/nginx/html
+
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Nginx 기본 HTTP 포트
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
