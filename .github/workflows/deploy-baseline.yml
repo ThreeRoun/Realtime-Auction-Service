@@ -101,13 +101,24 @@ jobs:
     needs: deploy
     runs-on: ubuntu-latest
     steps:
-      # TODO: 실제 서비스에 /health(혹은 /actuator/health) 엔드포인트가 추가되면 대상 URL 보강
-      - name: Verify auction-engine is responding
+      - name: Verify frontend is serving the page
         run: |
-          curl --fail \
+          curl --fail --show-error --silent \
             --connect-timeout 5 \
             --max-time 15 \
             --retry 5 \
             --retry-delay 5 \
             --retry-connrefused \
-            "http://${{ secrets.AWS_HOST }}:8080/actuator/health"
+            --output /dev/null \
+            "http://${{ secrets.AWS_HOST }}:3000/"
+
+      - name: Verify product API through frontend
+        run: |
+          curl --fail --show-error --silent \
+            --connect-timeout 5 \
+            --max-time 15 \
+            --retry 5 \
+            --retry-delay 5 \
+            --retry-connrefused \
+            --output /dev/null \
+            "http://${{ secrets.AWS_HOST }}:3000/api/products"
