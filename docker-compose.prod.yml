@@ -62,7 +62,7 @@ services:
     container_name: frontend
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "3000:80"
     depends_on:
       - auction-engine
       - realtime-relay

@@ -72,31 +72,53 @@ jobs:
             --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
             --parameters commands="[
+              \"set -eu\",
               \"cd ${{ secrets.DEPLOY_PATH }}\",
               \"export ECR_REGISTRY=${{ secrets.ECR_REGISTRY }}\",
               \"export IMAGE_TAG=${{ env.IMAGE_TAG }}\",
+              \"git config --global --add safe.directory '${{ secrets.DEPLOY_PATH }}'\",
               \"git fetch origin baseline\",
               \"git reset --hard origin/baseline\",
+              \"bash -o pipefail -c 'aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}'\",
               \"docker compose -f docker-compose.prod.yml pull\",
               \"docker compose -f docker-compose.prod.yml up -d\",
               \"docker image prune -f\"
             ]" \
             --query "Command.CommandId" --output text)
 
+          WAIT_EXIT=0
           aws ssm wait command-executed \
             --command-id "$COMMAND_ID" \
-            --instance-id "${{ secrets.EC2_INSTANCE_ID }}"
+            --instance-id "${{ secrets.EC2_INSTANCE_ID }}" || WAIT_EXIT=$?
 
           aws ssm get-command-invocation \
             --command-id "$COMMAND_ID" \
             --instance-id "${{ secrets.EC2_INSTANCE_ID }}"
 
+          exit "$WAIT_EXIT"
+
   health-check:
     needs: deploy
     runs-on: ubuntu-latest
     steps:
-      # TODO: 실제 서비스에 /health(혹은 /actuator/health) 엔드포인트가 추가되면 대상 URL 보강
-      - name: Verify auction-engine is responding
+      - name: Verify frontend is serving the page
         run: |
-          curl --fail --retry 5 --retry-delay 5 --retry-connrefused \
-            "http://${{ secrets.AWS_HOST }}:8080/actuator/health"
+          curl --fail --show-error --silent \
+            --connect-timeout 5 \
+            --max-time 15 \
+            --retry 5 \
+            --retry-delay 5 \
+            --retry-connrefused \
+            --output /dev/null \
+            "http://${{ secrets.AWS_HOST }}:3000/"
+
+      - name: Verify product API through frontend
+        run: |
+          curl --fail --show-error --silent \
+            --connect-timeout 5 \
+            --max-time 15 \
+            --retry 5 \
+            --retry-delay 5 \
+            --retry-connrefused \
+            --output /dev/null \
+            "http://${{ secrets.AWS_HOST }}:3000/api/products"
