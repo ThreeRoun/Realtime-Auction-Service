@@ -238,6 +238,23 @@ class ProductControllerTest {
         Map<?, ?> body = objectMapper.readValue(response, Map.class);
         assertThat(body.get("id")).isEqualTo(product.getId().toString());
         assertThat(body.get("title")).isEqualTo(product.getTitle());
+        assertThat(body.get("sellerUsername")).isEqualTo(seller.getUsername());
+    }
+
+    @Test
+    void 목록_조회_응답에도_판매자_닉네임이_포함된다() throws Exception {
+        User seller = seller();
+        Product product = product(seller, ProductStatus.IN_PROGRESS, LocalDateTime.now().plusHours(1));
+
+        String body = mockMvc.perform(get("/api/products"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        List<Map<String, Object>> products = objectMapper.readValue(body, List.class);
+        Map<String, Object> found = products.stream()
+                .filter(p -> product.getId().toString().equals(p.get("id")))
+                .findFirst().orElseThrow();
+        assertThat(found.get("sellerUsername")).isEqualTo(seller.getUsername());
     }
 
     @Test

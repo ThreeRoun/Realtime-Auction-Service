@@ -70,6 +70,7 @@ Product 객체 하나 (아래 GET 응답과 동일한 모양).
     "currentPrice": 45000,
     "bidUnit": 5000,
     "sellerId": "11111111-1111-1111-1111-111111111111",
+    "sellerUsername": "demoSeller",
     "status": "IN_PROGRESS",
     "startAt": "2026-09-26T10:00:00",
     "endAt": "2026-09-30T18:00:00",
@@ -80,6 +81,9 @@ Product 객체 하나 (아래 GET 응답과 동일한 모양).
 ```
 
 상품이 없으면 빈 배열 `[]`.
+
+`sellerUsername`은 프론트가 "등록자"를 보여주기 위해 추가된 필드다 — `sellerId`로 다시
+`GET /api/users/{id}`를 호출할 필요 없이 이 응답 하나로 바로 표시할 수 있다.
 
 ### 응답 - 실패 (GET /api/products)
 

@@ -62,7 +62,7 @@ public class ProductController {
 
     @GetMapping("/{id}")
     public ProductResponse detail(@PathVariable UUID id) {
-        Product product = productRepository.findById(id)
+        Product product = productRepository.findByIdWithSeller(id)
                 .orElseThrow(() -> new ProductNotFoundException(id));
         return ProductResponse.from(product);
     }
