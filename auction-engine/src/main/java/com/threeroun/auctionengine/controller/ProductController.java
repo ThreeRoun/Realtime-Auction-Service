@@ -23,6 +23,7 @@ import org.springframework.http.HttpStatus;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static com.threeroun.auctionengine.security.JwtAuthenticationFilter.AUTH_USER_ID_ATTRIBUTE;
@@ -48,15 +49,33 @@ public class ProductController {
     }
 
     @GetMapping
-    public List<ProductResponse> list(@RequestParam(required = false) String status) {
+    public List<ProductResponse> list(@RequestParam(required = false) String status,
+                                       @RequestParam(required = false) UUID sellerId,
+                                       @RequestParam(required = false) UUID biddedByUserId) {
+        // 마이페이지("등록한 경매"/"참여 중인 경매")는 상태와 무관하게 전체 이력을 보고 싶어하므로,
+        // sellerId/biddedByUserId로 "내 경매"를 조회하는데 status를 안 넘겼으면 홈 화면 기본값
+        // (진행중만)이 아니라 전체 상태를 기본값으로 쓴다.
+        boolean myAuctionsQuery = sellerId != null || biddedByUserId != null;
+
         List<Product> products;
         if (status == null) {
-            products = productRepository.findByStatusInOrderByEndAtAsc(DEFAULT_STATUSES);
+            products = myAuctionsQuery
+                    ? productRepository.findAllByOrderByEndAtAsc()
+                    : productRepository.findByStatusInOrderByEndAtAsc(DEFAULT_STATUSES);
         } else if (status.equalsIgnoreCase("all")) {
             products = productRepository.findAllByOrderByEndAtAsc();
         } else {
             products = productRepository.findByStatusOrderByEndAtAsc(parseStatus(status));
         }
+
+        if (sellerId != null) {
+            products = products.stream().filter(p -> p.getSeller().getId().equals(sellerId)).toList();
+        }
+        if (biddedByUserId != null) {
+            Set<UUID> biddedProductIds = Set.copyOf(bidRepository.findDistinctProductIdsByBidderId(biddedByUserId));
+            products = products.stream().filter(p -> biddedProductIds.contains(p.getId())).toList();
+        }
+
         return products.stream().map(ProductResponse::from).toList();
     }
 
