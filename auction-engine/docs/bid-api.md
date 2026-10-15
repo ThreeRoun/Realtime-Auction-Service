@@ -42,7 +42,11 @@ Content-Type: application/json
 BidService가 진 입찰 기록도 롤백 없이 남기도록 설계돼 있어(트랜잭션 안에서 예외를 던지지 않음), 그 설계와 HTTP 응답 의미를 일치시키기 위해
 409가 아닌 201 + `isValid: false`로 통일했다.
 
-`extended`는 **이 요청이 지금 막 마감 연장을 발생시켰는지** 여부다. 유효한 입찰이고, 마감까지 30초 이하로 남은 상태였다면 마감을 2분 연장하고 상품 status를 `EXTENDED`로 바꾼 뒤 `true`가 된다 (값은 `BidService.ANTI_SNIPING_WINDOW` / `EXTENSION_DURATION` 상수로 조정 가능). 진 입찰은 가격이 안 바뀌므로 연장 대상이 아니라 항상 `false`.
+`extended`는 **이 요청이 지금 막 마감 연장을 발생시켰는지** 여부다. 유효한 입찰이고, 마감까지 30초 이하로 남은 상태였다면 마감을 1분 연장하고 상품 status를 `EXTENDED`로 바꾼 뒤 `true`가 된다 (값은 `BidService.ANTI_SNIPING_WINDOW` / `EXTENSION_DURATION` 상수로 조정 가능). 진 입찰은 가격이 안 바뀌므로 연장 대상이 아니라 항상 `false`.
+
+⚠️ **연장은 상품당 최대 5회(`BidService.MAX_EXTENSIONS`)까지만 된다.** 5회를 넘으면 마감 임박 + 유효한 입찰이어도 가격만 갱신되고 `extended`는 `false`로 응답한다(무한정 연장 방지).
+
+⚠️ **같은 유저가 같은 상품에 10초(`BidService.BID_COOLDOWN`) 이내 다시 입찰하면 요청 자체가 거절된다** (아래 `BID_COOLDOWN_ACTIVE` 참고). 매크로/연타성 어뷰징을 막기 위한 것으로, 이 경우엔 "진 입찰" 로그조차 남기지 않고 바로 에러를 반환한다.
 
 ### 응답 - 실패
 
@@ -59,6 +63,7 @@ BidService가 진 입찰 기록도 롤백 없이 남기도록 설계돼 있어(�
 | SELF_BID_NOT_ALLOWED | 403 | 판매자 본인이 자기 상품에 입찰 시도 (자전 거래 방지) |
 | PRODUCT_NOT_FOUND | 404 | 존재하지 않는 상품 |
 | AUCTION_NOT_IN_PROGRESS | 409 | 상품 status가 진행중/마감연장이 아님 (아직 시작 전이거나 이미 종료됨) |
+| BID_COOLDOWN_ACTIVE | 429 | 같은 유저가 같은 상품에 직전 입찰 후 10초 안에 다시 입찰함 |
 | INVALID_REQUEST | 400 | productId 누락, amount 누락/0 이하 등 요청 형식 자체가 잘못됨 |
 
 ### 미구현 (다음 단계)

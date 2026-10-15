@@ -1,6 +1,7 @@
 package com.threeroun.auctionengine.controller;
 
 import com.threeroun.auctionengine.service.AuctionNotInProgressException;
+import com.threeroun.auctionengine.service.BidCooldownException;
 import com.threeroun.auctionengine.service.DuplicateUserException;
 import com.threeroun.auctionengine.service.InvalidCredentialsException;
 import com.threeroun.auctionengine.service.ProductNotFoundException;
@@ -52,6 +53,12 @@ public class ApiExceptionHandler {
     @ResponseStatus(HttpStatus.FORBIDDEN)
     public ErrorResponse handleSelfBidNotAllowed(SelfBidNotAllowedException e) {
         return new ErrorResponse("SELF_BID_NOT_ALLOWED", e.getMessage());
+    }
+
+    @ExceptionHandler(BidCooldownException.class)
+    @ResponseStatus(HttpStatus.TOO_MANY_REQUESTS)
+    public ErrorResponse handleBidCooldown(BidCooldownException e) {
+        return new ErrorResponse("BID_COOLDOWN_ACTIVE", e.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
