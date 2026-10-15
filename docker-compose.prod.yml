@@ -35,8 +35,11 @@ services:
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://auction-db:5432/auction
       - SPRING_DATA_REDIS_HOST=auction-redis
+      - PRODUCT_IMAGE_DIR=/data/product-images
     ports:
       - "8080:8080"
+    volumes:
+      - product-images:/data/product-images
     depends_on:
       db:
         condition: service_healthy
@@ -69,3 +72,4 @@ services:
 
 volumes:
   db-data:
+  product-images:
