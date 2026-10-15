@@ -1,0 +1,1 @@
+ALTER TABLE products ADD COLUMN extension_count INTEGER NOT NULL DEFAULT 0;

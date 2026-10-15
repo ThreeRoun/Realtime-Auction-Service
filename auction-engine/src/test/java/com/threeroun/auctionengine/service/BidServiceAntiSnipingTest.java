@@ -94,4 +94,26 @@ class BidServiceAntiSnipingTest {
         assertThat(reloaded.getEndAt().truncatedTo(ChronoUnit.SECONDS))
                 .isEqualTo(originalEndAt.truncatedTo(ChronoUnit.SECONDS));
     }
+
+    @Test
+    void 연장_횟수가_상한에_도달하면_마감_임박이어도_더_연장되지_않는다() {
+        User seller = user("seller");
+        User bidder = user("bidder");
+        LocalDateTime originalEndAt = LocalDateTime.now().plusSeconds(10); // 윈도우 안
+        Product product = product(seller, originalEndAt);
+        for (int i = 0; i < BidService.MAX_EXTENSIONS; i++) {
+            product.incrementExtensionCount();
+        }
+        productRepository.save(product);
+
+        BidResult result = bidService.placeBid(product.getId(), bidder.getId(), STARTING_PRICE + BID_UNIT);
+
+        assertThat(result.bid().isValid()).isTrue();
+        assertThat(result.extended()).isFalse();
+
+        Product reloaded = productRepository.findById(product.getId()).orElseThrow();
+        assertThat(reloaded.getExtensionCount()).isEqualTo(BidService.MAX_EXTENSIONS);
+        assertThat(reloaded.getEndAt().truncatedTo(ChronoUnit.SECONDS))
+                .isEqualTo(originalEndAt.truncatedTo(ChronoUnit.SECONDS));
+    }
 }

@@ -249,15 +249,18 @@ class ProductControllerTest {
     @Test
     void 입찰_이력을_최신순으로_조회한다() throws Exception {
         User seller = seller();
-        User bidder = seller(); // 그냥 또 다른 유저 하나 필요해서 재사용
+        // 입찰 쿨다운(BidService.BID_COOLDOWN) 때문에 같은 유저가 연달아 입찰할 수 없어서,
+        // 순서만 확인하면 되는 이 테스트는 서로 다른 유저로 두 번 입찰한다.
+        User bidder1 = seller();
+        User bidder2 = seller();
         Product product = product(seller, ProductStatus.IN_PROGRESS, LocalDateTime.now().plusHours(1));
 
         Map<String, Object> firstBid = Map.of("productId", product.getId().toString(), "amount", 11000);
         Map<String, Object> secondBid = Map.of("productId", product.getId().toString(), "amount", 12000);
-        mockMvc.perform(post("/api/bids").header(HttpHeaders.AUTHORIZATION, bearerToken(bidder))
+        mockMvc.perform(post("/api/bids").header(HttpHeaders.AUTHORIZATION, bearerToken(bidder1))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(firstBid))).andExpect(status().isCreated());
-        mockMvc.perform(post("/api/bids").header(HttpHeaders.AUTHORIZATION, bearerToken(bidder))
+        mockMvc.perform(post("/api/bids").header(HttpHeaders.AUTHORIZATION, bearerToken(bidder2))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(secondBid))).andExpect(status().isCreated());
 
