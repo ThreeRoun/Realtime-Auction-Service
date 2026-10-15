@@ -21,7 +21,8 @@ public record ProductResponse(
         LocalDateTime startAt,
         LocalDateTime endAt,
         UUID winnerId,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        String imageUrl
 ) {
     public static ProductResponse from(Product product) {
         return new ProductResponse(
@@ -36,6 +37,7 @@ public record ProductResponse(
                 product.getStartAt(),
                 product.getEndAt(),
                 product.getWinner() != null ? product.getWinner().getId() : null,
-                product.getCreatedAt());
+                product.getCreatedAt(),
+                product.getImageUrl());
     }
 }
