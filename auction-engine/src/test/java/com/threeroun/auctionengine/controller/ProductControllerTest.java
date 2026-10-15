@@ -1,9 +1,11 @@
 package com.threeroun.auctionengine.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.threeroun.auctionengine.domain.Bid;
 import com.threeroun.auctionengine.domain.Product;
 import com.threeroun.auctionengine.domain.ProductStatus;
 import com.threeroun.auctionengine.domain.User;
+import com.threeroun.auctionengine.repository.BidRepository;
 import com.threeroun.auctionengine.repository.ProductRepository;
 import com.threeroun.auctionengine.repository.UserRepository;
 import com.threeroun.auctionengine.service.JwtService;
@@ -35,6 +37,8 @@ class ProductControllerTest {
     private ProductRepository productRepository;
     @Autowired
     private UserRepository userRepository;
+    @Autowired
+    private BidRepository bidRepository;
     @Autowired
     private JwtService jwtService;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -95,6 +99,42 @@ class ProductControllerTest {
     void 알수없는_status값이면_400을_반환한다() throws Exception {
         mockMvc.perform(get("/api/products").param("status", "NOT_A_STATUS"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void sellerId로_필터링하면_그_판매자가_등록한_상품만_상태무관하게_반환한다() throws Exception {
+        User seller = seller();
+        User otherSeller = seller();
+        Product mine = product(seller, ProductStatus.PENDING, LocalDateTime.now().plusDays(1));
+        Product alsoMine = product(seller, ProductStatus.COMPLETED, LocalDateTime.now().minusDays(1));
+        Product notMine = product(otherSeller, ProductStatus.IN_PROGRESS, LocalDateTime.now().plusHours(1));
+
+        String body = mockMvc.perform(get("/api/products").param("sellerId", seller.getId().toString()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        List<Map<String, Object>> products = objectMapper.readValue(body, List.class);
+        List<String> ids = products.stream().map(p -> (String) p.get("id")).toList();
+        assertThat(ids).contains(mine.getId().toString(), alsoMine.getId().toString());
+        assertThat(ids).doesNotContain(notMine.getId().toString());
+    }
+
+    @Test
+    void biddedByUserId로_필터링하면_그_유저가_입찰한_상품만_반환한다() throws Exception {
+        User seller = seller();
+        User bidder = seller(); // 그냥 또 다른 유저 하나 필요해서 재사용
+        Product bidded = product(seller, ProductStatus.COMPLETED, LocalDateTime.now().minusDays(1));
+        Product notBidded = product(seller, ProductStatus.IN_PROGRESS, LocalDateTime.now().plusHours(1));
+        bidRepository.save(new Bid(bidded, bidder, 15000));
+
+        String body = mockMvc.perform(get("/api/products").param("biddedByUserId", bidder.getId().toString()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        List<Map<String, Object>> products = objectMapper.readValue(body, List.class);
+        List<String> ids = products.stream().map(p -> (String) p.get("id")).toList();
+        assertThat(ids).contains(bidded.getId().toString());
+        assertThat(ids).doesNotContain(notBidded.getId().toString());
     }
 
     @Test
