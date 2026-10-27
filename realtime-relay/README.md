@@ -87,7 +87,7 @@
 | 변수 | 기본값 | 설명 |
 | --- | --- | --- |
 | `PORT` | `4000` | WebSocket 서버 포트 |
-| `REDIS_HOST` | `auction-redis` | Redis 호스트 (컨테이너 환경 기준) |
+| `REDIS_HOST` | `localhost` | Redis 호스트 (컨테이너 환경에서는 compose가 `auction-redis`로 지정) |
 | `REDIS_PORT` | `6379` | Redis 포트 |
 
 ### 실행 방법
@@ -99,8 +99,8 @@ docker compose up -d redis
 # 2. 의존성 설치
 cd realtime-relay && npm install
 
-# 3. 서버 구동 (로컬 실행 시 REDIS_HOST 지정 필수)
-REDIS_HOST=localhost node server.js
+# 3. 서버 구동
+node server.js
 ```
 
 `✅ [Redis] 'auction_events' 채널 구독 완료!` 로그가 보이면 정상입니다.
@@ -121,6 +121,6 @@ docker exec -it auction-redis redis-cli PUBLISH auction_events \
 - **PUBLISH 결과가 `(integer) 0`이고 이벤트가 오지 않음**
   Mac에 Homebrew 등으로 설치한 Redis가 켜져 있으면, `localhost:6379` 연결이 도커 Redis가 아닌 로컬 Redis로 갑니다. `lsof -nP -iTCP:6379 -sTCP:LISTEN`으로 `redis-server`가 보이면 `brew services stop redis`로 끈 뒤 relay(와 엔진)를 재시작하세요.
 - **`❌ [Redis 연결 오류]`가 반복됨**
-  `REDIS_HOST=localhost` 없이 실행한 경우입니다. 기본값 `auction-redis`는 컨테이너 네트워크에서만 접근 가능합니다.
+  Redis 컨테이너가 실행 중인지 확인하세요(`docker compose up -d redis`). 다른 호스트의 Redis를 쓰려면 `REDIS_HOST`로 지정하세요.
 - **`EADDRINUSE` (포트 사용 중)**
   `docker compose up`으로 띄운 `realtime-relay` 컨테이너가 4000 포트를 쓰고 있을 수 있습니다. `docker compose stop realtime-relay` 후 다시 실행하세요.
