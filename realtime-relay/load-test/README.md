@@ -10,7 +10,7 @@
 
 # 2. 부하 테스트 시작 (기본 2,000명, VUS로 조절 가능)
 # (realtime-relay 폴더에서 실행)
-k6 run -e PRODUCT_ID=test-product load-test/ws_test.js
+k6 run -e PRODUCT_ID=test-product load-test/ws_test.mjs
 
 # 3. 접속자가 다 찬 뒤(약 20초 후) 다른 터미널에서 테스트 이벤트 발행
 node publish.js test-product 5 1000

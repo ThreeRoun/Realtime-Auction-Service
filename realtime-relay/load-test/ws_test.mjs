@@ -1,10 +1,10 @@
-// realtime-relay/load-test/ws_test.js
+// realtime-relay/load-test/ws_test.mjs
 // k6 WebSocket 부하 테스트: 한 상품 방에 다수의 가상 사용자를 접속시키고,
 // 입찰 이벤트가 전원에게 전달되는지와 발행 → 수신 지연을 측정한다.
 //
 // 실행 예시:
-//   k6 run -e PRODUCT_ID=<상품 UUID> load-test/ws_test.js
-//   k6 run -e PRODUCT_ID=<상품 UUID> -e VUS=500 load-test/ws_test.js
+//   k6 run -e PRODUCT_ID=<상품 UUID> load-test/ws_test.mjs
+//   k6 run -e PRODUCT_ID=<상품 UUID> -e VUS=500 load-test/ws_test.mjs
 import ws from 'k6/ws';
 import { check } from 'k6';
 import { Trend } from 'k6/metrics';
@@ -14,7 +14,7 @@ const WS_URL = __ENV.WS_URL || 'ws://localhost:4000';
 const VUS = Number(__ENV.VUS || 2000);
 
 if (!PRODUCT_ID) {
-  throw new Error('PRODUCT_ID가 필요합니다. 예: k6 run -e PRODUCT_ID=<상품 UUID> load-test/ws_test.js');
+  throw new Error('PRODUCT_ID가 필요합니다. 예: k6 run -e PRODUCT_ID=<상품 UUID> load-test/ws_test.mjs');
 }
 
 // 발행 시각(sent_at)이 담긴 이벤트를 받았을 때, 발행부터 수신까지 걸린 시간(ms)
