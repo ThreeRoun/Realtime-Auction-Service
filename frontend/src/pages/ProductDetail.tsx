@@ -196,6 +196,23 @@ function ProductDetail() {
           />
           <button
             type="button"
+            onClick={() => {
+              const minimumBid = currentPrice + product.bidUnit;
+              const currentAmount = Number(bidAmount);
+
+              const nextAmount =
+                currentAmount < minimumBid
+                  ? minimumBid
+                  : currentAmount + product.bidUnit;
+
+              setBidAmount(String(nextAmount));
+            }}
+            disabled={isBidding || isAuctionClosed}
+          >
+            +{product.bidUnit.toLocaleString()}원
+          </button>
+          <button
+            type="button"
             onClick={handleBid}
             disabled={isBidding || isAuctionClosed}
           >
