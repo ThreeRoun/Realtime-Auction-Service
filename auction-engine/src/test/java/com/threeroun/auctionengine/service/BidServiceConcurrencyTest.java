@@ -13,7 +13,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -40,7 +42,6 @@ class BidServiceConcurrencyTest {
     private BidRepository bidRepository;
 
     private User seller;
-    private User bidder;
     private Product product;
 
     private static final int STARTING_PRICE = 10_000;
@@ -51,7 +52,6 @@ class BidServiceConcurrencyTest {
         // 테스트 메서드마다 새로 실행되므로 username/email 유니크 제약에 걸리지 않게 매번 고유값 사용
         String suffix = java.util.UUID.randomUUID().toString().substring(0, 8);
         seller = userRepository.save(new User("seller-" + suffix, "seller-" + suffix + "@test.com", "hash"));
-        bidder = userRepository.save(new User("bidder-" + suffix, "bidder-" + suffix + "@test.com", "hash"));
 
         Product newProduct = new Product("테스트 상품", "동시성 테스트용", STARTING_PRICE, BID_UNIT,
                 seller, LocalDateTime.now().minusMinutes(1), LocalDateTime.now().plusHours(1));
@@ -59,10 +59,23 @@ class BidServiceConcurrencyTest {
         product = productRepository.save(newProduct);
     }
 
+    // 각 스레드가 서로 다른 입찰자여야 한다 - 같은 유저로 20명을 흉내 내면, 락 때문에 순서대로
+    // 처리되는 두 번째 요청부터는 입찰 쿨다운(BidService.BID_COOLDOWN)에 걸려 버려서
+    // "동시 입찰 시 하나만 성공" 검증이 아니라 "쿨다운에 막힘" 검증이 돼버린다.
+    private List<User> bidders(int count) {
+        List<User> users = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            String suffix = UUID.randomUUID().toString().substring(0, 8);
+            users.add(userRepository.save(new User("bidder-" + suffix, "bidder-" + suffix + "@test.com", "hash")));
+        }
+        return users;
+    }
+
     @Test
     void 같은_금액으로_동시에_입찰하면_하나만_최고가로_확정된다() throws InterruptedException {
         int threadCount = 20;
         int bidAmount = STARTING_PRICE + BID_UNIT; // 20명 모두 최소 입찰가로 동시 입찰
+        List<User> bidders = bidders(threadCount);
 
         ExecutorService executor = Executors.newFixedThreadPool(threadCount);
         CountDownLatch readyLatch = new CountDownLatch(threadCount);
@@ -71,6 +84,7 @@ class BidServiceConcurrencyTest {
         AtomicInteger successCount = new AtomicInteger();
 
         for (int i = 0; i < threadCount; i++) {
+            User bidder = bidders.get(i);
             executor.submit(() -> {
                 readyLatch.countDown();
                 try {
@@ -118,13 +132,16 @@ class BidServiceConcurrencyTest {
                 .mapToObj(i -> STARTING_PRICE + i * BID_UNIT)
                 .collect(Collectors.toList());
         int maxAmount = amounts.get(amounts.size() - 1);
+        List<User> bidders = bidders(threadCount);
 
         ExecutorService executor = Executors.newFixedThreadPool(threadCount);
         CountDownLatch readyLatch = new CountDownLatch(threadCount);
         CountDownLatch startLatch = new CountDownLatch(1);
         CountDownLatch doneLatch = new CountDownLatch(threadCount);
 
-        for (int amount : amounts) {
+        for (int i = 0; i < threadCount; i++) {
+            int amount = amounts.get(i);
+            User bidder = bidders.get(i);
             executor.submit(() -> {
                 readyLatch.countDown();
                 try {

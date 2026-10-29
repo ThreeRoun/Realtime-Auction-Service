@@ -59,6 +59,11 @@ public class Product {
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
+    // 안티 스나이핑으로 마감을 연장한 횟수. 무한정 늘어나는 걸 막기 위한 상한(BidService.MAX_EXTENSIONS)
+    // 판정에 쓴다.
+    @Column(name = "extension_count", nullable = false)
+    private int extensionCount = 0;
+
     @Column(name = "image_url", length = 500)
     private String imageUrl;
 
@@ -124,6 +129,14 @@ public class Product {
 
     public LocalDateTime getCreatedAt() {
         return createdAt;
+    }
+
+    public int getExtensionCount() {
+        return extensionCount;
+    }
+
+    public void incrementExtensionCount() {
+        this.extensionCount++;
     }
 
     public String getImageUrl() {

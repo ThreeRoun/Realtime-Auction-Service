@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -22,7 +23,12 @@ public class BidService {
     // 안티 스나이핑: 마감까지 이 시간 이하로 남은 상태에서 유효한 입찰이 들어오면 마감을 연장한다.
     // 숫자 자체는 데모/운영 편의상 정한 값이라 필요하면 쉽게 바꿀 수 있게 상수로 분리해둔다.
     static final Duration ANTI_SNIPING_WINDOW = Duration.ofSeconds(30);
-    static final Duration EXTENSION_DURATION = Duration.ofMinutes(2);
+    static final Duration EXTENSION_DURATION = Duration.ofMinutes(1);
+    // 연장이 무한정 반복되는 걸 막는 상한. 이 횟수를 넘으면 마감 임박 시 유효한 입찰이 들어와도
+    // 가격만 갱신되고 더 이상 연장되지 않는다.
+    static final int MAX_EXTENSIONS = 5;
+    // 같은 유저가 같은 상품에 너무 짧은 간격으로 연타 입찰(매크로 등)하는 걸 막는 쿨다운.
+    static final Duration BID_COOLDOWN = Duration.ofSeconds(10);
 
     private final ProductRepository productRepository;
     private final BidRepository bidRepository;
@@ -54,6 +60,14 @@ public class BidService {
             throw new SelfBidNotAllowedException(productId);
         }
 
+        // 쿨다운: 승패(valid) 상관없이 "이 유저가 이 상품에 요청을 보낸 시각" 자체를 본다 -
+        // 매크로로 연타하면 지는 입찰도 반복 생성되므로, 이긴 입찰만 보면 쿨다운을 우회할 수 있다.
+        Optional<Bid> lastBid = bidRepository.findFirstByProductIdAndBidderIdOrderByBidAtDesc(productId, bidderId);
+        LocalDateTime now = LocalDateTime.now();
+        if (lastBid.isPresent() && Duration.between(lastBid.get().getBidAt(), now).compareTo(BID_COOLDOWN) < 0) {
+            throw new BidCooldownException(productId);
+        }
+
         Bid bid = new Bid(product, userRepository.getReferenceById(bidderId), amount);
 
         int minNextBid = product.getCurrentPrice() + product.getBidUnit();
@@ -64,10 +78,12 @@ public class BidService {
 
             // 진 입찰(가격을 못 넘긴 입찰)은 애초에 마감 연장 대상이 아니다 - 가격이 안 바뀌었으니
             // 연장해줄 이유가 없음. 이긴 입찰만 안티 스나이핑 판정 대상.
-            LocalDateTime now = LocalDateTime.now();
-            if (!Duration.between(now, product.getEndAt()).minus(ANTI_SNIPING_WINDOW).isPositive()) {
+            // 연장 횟수가 상한에 도달했으면 마감 임박이어도 더 연장하지 않는다(가격만 갱신됨).
+            if (product.getExtensionCount() < MAX_EXTENSIONS
+                    && !Duration.between(now, product.getEndAt()).minus(ANTI_SNIPING_WINDOW).isPositive()) {
                 product.setEndAt(product.getEndAt().plus(EXTENSION_DURATION));
                 product.setStatus(ProductStatus.EXTENDED);
+                product.incrementExtensionCount();
                 extended = true;
             }
         }
