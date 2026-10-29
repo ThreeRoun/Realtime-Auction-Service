@@ -46,6 +46,45 @@ Product 객체 하나 (아래 GET 응답과 동일한 모양).
 | 400 | INVALID_REQUEST | title/startingPrice/bidUnit/startAt/endAt 중 필수값 누락, 또는 형식 오류 |
 | 400 | (메시지만) | endAt이 startAt보다 앞이거나 같음 |
 
+## POST /api/products/{id}/image
+
+상품 이미지를 업로드한다. 등록(`POST /api/products`)과 별도 엔드포인트로 둔 이유는 등록 요청이
+JSON body라서 — 이미지는 상품을 먼저 등록한 뒤 이 엔드포인트로 추가로 올린다.
+**인증 필요**, 그리고 **본인이 등록한 상품만** 업로드 가능.
+
+이미지는 S3 같은 외부 스토리지가 아니라 서버(컨테이너) 로컬 디스크에 저장되고,
+`/images/<파일명>` 경로로 정적 서빙된다.
+
+### 요청
+
+```http
+POST /api/products/3fa85f64-5717-4562-b3fc-2c963f66afa6/image
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+Content-Type: multipart/form-data; boundary=...
+
+--...
+Content-Disposition: form-data; name="image"; filename="photo.jpg"
+Content-Type: image/jpeg
+
+<바이너리>
+--...--
+```
+
+허용 형식: `image/jpeg`, `image/png`, `image/webp`. 최대 5MB.
+
+### 응답 - 성공 (200 OK)
+
+Product 객체 하나 (GET 응답과 동일한 모양, `imageUrl`이 새로 채워진 상태).
+
+### 응답 - 실패
+
+| HTTP status | code | 설명 |
+| --- | --- | --- |
+| 401 | UNAUTHORIZED | Authorization 헤더가 없거나 토큰이 유효하지 않음 |
+| 403 | NOT_PRODUCT_OWNER | 본인이 등록한 상품이 아님 |
+| 404 | PRODUCT_NOT_FOUND | 존재하지 않는 상품 |
+| 400 | (메시지만) | 파일이 비어있거나, jpeg/png/webp가 아닌 형식 |
+
 ## GET /api/products
 
 ### 쿼리 파라미터
@@ -54,7 +93,9 @@ Product 객체 하나 (아래 GET 응답과 동일한 모양).
 
 | 파라미터 | 설명 |
 | --- | --- |
-| status | 없으면 기본값(`IN_PROGRESS`, `EXTENDED` — 즉 입찰 가능한 진행중 상품)만 반환. `all`이면 전체 상태 반환. `PENDING`/`SOLD`/`UNSOLD`/`COMPLETED` 등 특정 상태 하나만 넘기면 그 상태만 필터링. |
+| status | 없으면 기본값(`IN_PROGRESS`, `EXTENDED` — 즉 입찰 가능한 진행중 상품)만 반환. `all`이면 전체 상태 반환. `PENDING`/`SOLD`/`UNSOLD`/`COMPLETED` 등 특정 상태 하나만 넘기면 그 상태만 필터링. `sellerId`나 `biddedByUserId`를 같이 넘기면 이 기본값 대신 전체 상태가 기본값이 된다 (마이페이지는 상태 무관하게 전체 이력을 보여줘야 하므로). |
+| sellerId | 마이페이지 "등록한 경매" 용도. 이 유저가 등록한 상품만 반환. |
+| biddedByUserId | 마이페이지 "참여 중인 경매" 용도. 이 유저가 (진 입찰 포함) 입찰한 적 있는 상품만 반환. "낙찰된 경매"는 별도 파라미터 없이, 이 응답에서 프론트가 `status === "SOLD" && winnerId === 내 id`로 걸러내면 된다. |
 
 정렬: 마감 임박순(`end_at asc`) 고정. 페이지네이션 없음(MVP).
 
@@ -70,16 +111,21 @@ Product 객체 하나 (아래 GET 응답과 동일한 모양).
     "currentPrice": 45000,
     "bidUnit": 5000,
     "sellerId": "11111111-1111-1111-1111-111111111111",
+    "sellerUsername": "demoSeller",
     "status": "IN_PROGRESS",
     "startAt": "2026-09-26T10:00:00",
     "endAt": "2026-09-30T18:00:00",
     "winnerId": null,
-    "createdAt": "2026-09-20T09:00:00"
+    "createdAt": "2026-09-20T09:00:00",
+    "imageUrl": "/images/3f1e2b7a-....jpg"
   }
 ]
 ```
 
-상품이 없으면 빈 배열 `[]`.
+`imageUrl`은 이미지를 아직 안 올린 상품이면 `null`. 상품이 없으면 빈 배열 `[]`.
+
+`sellerUsername`은 프론트가 "등록자"를 보여주기 위해 추가된 필드다 — `sellerId`로 다시
+`GET /api/users/{id}`를 호출할 필요 없이 이 응답 하나로 바로 표시할 수 있다.
 
 ### 응답 - 실패 (GET /api/products)
 

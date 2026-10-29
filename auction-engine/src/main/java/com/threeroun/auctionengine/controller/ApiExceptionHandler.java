@@ -4,6 +4,7 @@ import com.threeroun.auctionengine.service.AuctionNotInProgressException;
 import com.threeroun.auctionengine.service.BidCooldownException;
 import com.threeroun.auctionengine.service.DuplicateUserException;
 import com.threeroun.auctionengine.service.InvalidCredentialsException;
+import com.threeroun.auctionengine.service.ProductImageUploadNotAllowedException;
 import com.threeroun.auctionengine.service.ProductNotFoundException;
 import com.threeroun.auctionengine.service.SelfBidNotAllowedException;
 import com.threeroun.auctionengine.service.UserNotFoundException;
@@ -59,6 +60,12 @@ public class ApiExceptionHandler {
     @ResponseStatus(HttpStatus.TOO_MANY_REQUESTS)
     public ErrorResponse handleBidCooldown(BidCooldownException e) {
         return new ErrorResponse("BID_COOLDOWN_ACTIVE", e.getMessage());
+    }
+
+    @ExceptionHandler(ProductImageUploadNotAllowedException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public ErrorResponse handleProductImageUploadNotAllowed(ProductImageUploadNotAllowedException e) {
+        return new ErrorResponse("NOT_PRODUCT_OWNER", e.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

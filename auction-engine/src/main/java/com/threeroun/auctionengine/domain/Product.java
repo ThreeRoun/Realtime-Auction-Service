@@ -64,6 +64,9 @@ public class Product {
     @Column(name = "extension_count", nullable = false)
     private int extensionCount = 0;
 
+    @Column(name = "image_url", length = 500)
+    private String imageUrl;
+
     protected Product() {
     }
 
@@ -134,6 +137,14 @@ public class Product {
 
     public void incrementExtensionCount() {
         this.extensionCount++;
+    }
+
+    public String getImageUrl() {
+        return imageUrl;
+    }
+
+    public void setImageUrl(String imageUrl) {
+        this.imageUrl = imageUrl;
     }
 
     public void setCurrentPrice(Integer currentPrice) {

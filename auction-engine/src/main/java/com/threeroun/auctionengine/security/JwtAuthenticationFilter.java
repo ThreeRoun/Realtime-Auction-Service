@@ -15,6 +15,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 // 상품등록/입찰처럼 "누가 요청했는지"가 중요한 API 앞단에서 Authorization 헤더의 JWT를 검증해서
 // request attribute(authUserId)로 심어준다. 디스패처서블릿보다 앞단(서블릿 필터)이라
@@ -28,6 +29,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     // 토큰 검증이 필요한 엔드포인트만 명시적으로 지정한다 (화이트리스트 방식) - 조회 API,
     // 회원가입, 로그인은 인증 없이 호출돼야 하므로 여기 넣지 않는다.
     private static final Set<String> PROTECTED_POST_PATHS = Set.of("/api/products", "/api/bids");
+
+    // /{id}/image처럼 path variable이 끼는 경로는 Set으로 정확히 나열할 수 없어서 패턴으로 매칭한다.
+    private static final Pattern PRODUCT_IMAGE_UPLOAD_PATH = Pattern.compile("^/api/products/[^/]+/image$");
 
     private final JwtService jwtService;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -64,7 +68,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private boolean isProtected(HttpServletRequest request) {
         // 기본("/") 디스패처 매핑에서는 getServletPath()가 빈 문자열을 반환하는 서블릿 컨테이너가 있어
         // 경로 매칭에 getRequestURI()를 쓴다 (컨텍스트 패스가 없는 구성이라 그대로 비교 가능).
-        return "POST".equalsIgnoreCase(request.getMethod()) && PROTECTED_POST_PATHS.contains(request.getRequestURI());
+        if (!"POST".equalsIgnoreCase(request.getMethod())) {
+            return false;
+        }
+        String uri = request.getRequestURI();
+        return PROTECTED_POST_PATHS.contains(uri) || PRODUCT_IMAGE_UPLOAD_PATH.matcher(uri).matches();
     }
 
     private void writeUnauthorized(HttpServletResponse response, String message) throws IOException {
