@@ -28,7 +28,9 @@ public class ProductImageService {
     // 메서드가 끝나며 커밋될 때 변경 감지(dirty checking)로 자동 반영된다 (BidService와 동일한 패턴).
     @Transactional
     public Product uploadImage(UUID productId, UUID requesterId, String extension, byte[] content) {
-        Product product = productRepository.findById(productId)
+        // ProductController가 반환값으로 ProductResponse.from()을 호출하면서 seller.getUsername()을
+        // 읽으므로, 여기서도 join fetch로 미리 초기화해둬야 한다(안 그러면 LazyInitializationException).
+        Product product = productRepository.findByIdWithSeller(productId)
                 .orElseThrow(() -> new ProductNotFoundException(productId));
 
         if (!product.getSeller().getId().equals(requesterId)) {
