@@ -93,7 +93,9 @@ Product 객체 하나 (GET 응답과 동일한 모양, `imageUrl`이 새로 채�
 
 | 파라미터 | 설명 |
 | --- | --- |
-| status | 없으면 기본값(`IN_PROGRESS`, `EXTENDED` — 즉 입찰 가능한 진행중 상품)만 반환. `all`이면 전체 상태 반환. `PENDING`/`SOLD`/`UNSOLD`/`COMPLETED` 등 특정 상태 하나만 넘기면 그 상태만 필터링. |
+| status | 없으면 기본값(`IN_PROGRESS`, `EXTENDED` — 즉 입찰 가능한 진행중 상품)만 반환. `all`이면 전체 상태 반환. `PENDING`/`SOLD`/`UNSOLD`/`COMPLETED` 등 특정 상태 하나만 넘기면 그 상태만 필터링. `sellerId`나 `biddedByUserId`를 같이 넘기면 이 기본값 대신 전체 상태가 기본값이 된다 (마이페이지는 상태 무관하게 전체 이력을 보여줘야 하므로). |
+| sellerId | 마이페이지 "등록한 경매" 용도. 이 유저가 등록한 상품만 반환. |
+| biddedByUserId | 마이페이지 "참여 중인 경매" 용도. 이 유저가 (진 입찰 포함) 입찰한 적 있는 상품만 반환. "낙찰된 경매"는 별도 파라미터 없이, 이 응답에서 프론트가 `status === "SOLD" && winnerId === 내 id`로 걸러내면 된다. |
 
 정렬: 마감 임박순(`end_at asc`) 고정. 페이지네이션 없음(MVP).
 
@@ -109,6 +111,7 @@ Product 객체 하나 (GET 응답과 동일한 모양, `imageUrl`이 새로 채�
     "currentPrice": 45000,
     "bidUnit": 5000,
     "sellerId": "11111111-1111-1111-1111-111111111111",
+    "sellerUsername": "demoSeller",
     "status": "IN_PROGRESS",
     "startAt": "2026-09-26T10:00:00",
     "endAt": "2026-09-30T18:00:00",
@@ -120,6 +123,9 @@ Product 객체 하나 (GET 응답과 동일한 모양, `imageUrl`이 새로 채�
 ```
 
 `imageUrl`은 이미지를 아직 안 올린 상품이면 `null`. 상품이 없으면 빈 배열 `[]`.
+
+`sellerUsername`은 프론트가 "등록자"를 보여주기 위해 추가된 필드다 — `sellerId`로 다시
+`GET /api/users/{id}`를 호출할 필요 없이 이 응답 하나로 바로 표시할 수 있다.
 
 ### 응답 - 실패 (GET /api/products)
 
