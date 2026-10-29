@@ -2,7 +2,6 @@ package com.threeroun.auctionengine.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.threeroun.auctionengine.domain.Product;
-import com.threeroun.auctionengine.domain.ProductStatus;
 import com.threeroun.auctionengine.domain.User;
 import com.threeroun.auctionengine.repository.ProductRepository;
 import com.threeroun.auctionengine.repository.UserRepository;
