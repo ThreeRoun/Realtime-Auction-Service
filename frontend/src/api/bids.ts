@@ -12,6 +12,14 @@ export interface BidResponse {
   isValid: boolean;
 }
 
+export interface BidHistoryResponse {
+  bidId: string;
+  bidderId: string;
+  amount: number;
+  bidAt: string;
+  isValid: boolean;
+}
+
 export async function placeBid(
   request: BidRequest
 ): Promise<BidResponse> {
@@ -32,6 +40,18 @@ export async function placeBid(
 
   if (!response.ok) {
     throw new Error("입찰 요청에 실패했습니다.");
+  }
+
+  return response.json();
+}
+
+export async function getBidHistory(
+  productId: string
+): Promise<BidHistoryResponse[]> {
+  const response = await fetch(`/api/products/${productId}/bids`);
+
+  if (!response.ok) {
+    throw new Error("입찰 내역 조회에 실패했습니다.");
   }
 
   return response.json();

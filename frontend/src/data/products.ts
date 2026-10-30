@@ -6,6 +6,7 @@ export interface Product {
   currentPrice: number;
   bidUnit: number;
   sellerId: string;
+  sellerUsername: string;
   status: string;
   startAt: string;
   endAt: string;
