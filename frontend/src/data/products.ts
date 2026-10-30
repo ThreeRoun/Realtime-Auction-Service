@@ -10,5 +10,6 @@ export interface Product {
   startAt: string;
   endAt: string;
   winnerId: string | null;
+  imageUrl: string | null;
   createdAt: string;
 }
