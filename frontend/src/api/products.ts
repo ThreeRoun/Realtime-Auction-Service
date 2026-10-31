@@ -1,3 +1,5 @@
+import type { Product } from "../data/products";
+
 export interface ProductCreateRequest {
   title: string;
   description: string;
