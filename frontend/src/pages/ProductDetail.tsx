@@ -179,7 +179,19 @@ function ProductDetail() {
     <main className="page-container">
       <div className="product-detail">
         <div className="product-detail-image">
-          상품 이미지
+          {product.imageUrl ? (
+            <img
+              src={product.imageUrl}
+              alt={product.title}
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "contain",
+              }}
+            />
+          ) : (
+            <span>상품 이미지 없음</span>
+          )}
         </div>
 
         <div className="product-detail-info">

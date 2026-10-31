@@ -1,3 +1,5 @@
+import type { Product } from "../data/products";
+
 export interface ProductCreateRequest {
   title: string;
   description: string;
@@ -36,7 +38,31 @@ export async function createProduct(request: ProductCreateRequest) {
   return response.json();
 }
 
-import type { Product } from "../data/products";
+export async function uploadProductImage(
+  productId: string,
+  image: File
+) {
+  const accessToken = localStorage.getItem("accessToken");
+
+  if (!accessToken) {
+    throw new Error("로그인이 필요합니다.");
+  }
+
+  const formData = new FormData();
+  formData.append("image", image);
+
+  const response = await fetch(`/api/products/${productId}/image`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error(`이미지 업로드에 실패했습니다. (${response.status})`);
+  }
+}
 
 export async function getMyProducts(
   userId: string,

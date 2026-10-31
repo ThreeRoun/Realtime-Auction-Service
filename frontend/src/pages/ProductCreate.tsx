@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createProduct } from "../api/products";
+import { createProduct, uploadProductImage } from "../api/products";
 
 function ProductCreate() {
   const [title, setTitle] = useState("");
@@ -7,18 +7,23 @@ function ProductCreate() {
   const [startingPrice, setStartingPrice] = useState("");
   const [bidUnit, setBidUnit] = useState("");
   const [endAt, setEndAt] = useState("");
+  const [image, setImage] = useState<File | null>(null);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     try {
-      await createProduct({
+      const product = await createProduct({
         title,
         description,
         startingPrice: Number(startingPrice),
         bidUnit: Number(bidUnit),
         endAt,
       });
+
+      if (image) {
+        await uploadProductImage(product.id, image);
+      }
 
       alert("상품이 성공적으로 등록되었습니다.");
     } catch (error) {
@@ -82,6 +87,25 @@ function ProductCreate() {
             value={endAt}
             onChange={(event) => setEndAt(event.target.value)}
             required
+          />
+
+          <label htmlFor="image">상품 이미지 (선택)</label>
+          <input
+            id="image"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={(event) => {
+              const file = event.target.files?.[0] ?? null;
+
+              if (file && file.size > 5 * 1024 * 1024) {
+                alert("이미지 크기는 5MB 이하여야 합니다.");
+                event.target.value = "";
+                setImage(null);
+                return;
+              }
+
+              setImage(file);
+            }}
           />
 
           <button type="submit">상품 등록</button>
