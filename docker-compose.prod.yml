@@ -1,5 +1,5 @@
-# 서버(배포 대상) 전용 compose 파일 - 로컬 build 대신 ECR에 push된 이미지를 pull해서 기동
-# 사용 전 ECR_REGISTRY / IMAGE_TAG 환경변수가 설정되어 있어야 함 (CI에서 자동 주입)
+# 서버(배포 대상) 전용 compose 파일 - 로컬 build 대신 GHCR에 push된 이미지를 pull해서 기동
+# 사용 전 IMAGE_REGISTRY / IMAGE_TAG 환경변수가 설정되어 있어야 함 (CI에서 자동 주입)
 
 services:
   db:
@@ -10,7 +10,7 @@ services:
       POSTGRES_USER: auction
       POSTGRES_PASSWORD: auction
       POSTGRES_DB: auction
-    # TODO: 실제 프로덕션 전환 시 비밀번호를 AWS Secrets Manager/SSM Parameter Store로 이전
+    # TODO: 실제 프로덕션 전환 시 비밀번호를 .env 파일 등 저장소 밖으로 이전
     ports:
       - "5432:5432"
     volumes:
@@ -29,7 +29,7 @@ services:
       - "6379:6379"
 
   auction-engine:
-    image: ${ECR_REGISTRY}/auction-engine:${IMAGE_TAG}
+    image: ${IMAGE_REGISTRY}/auction-engine:${IMAGE_TAG}
     container_name: auction-engine
     restart: unless-stopped
     environment:
@@ -47,7 +47,7 @@ services:
         condition: service_started
 
   realtime-relay:
-    image: ${ECR_REGISTRY}/realtime-relay:${IMAGE_TAG}
+    image: ${IMAGE_REGISTRY}/realtime-relay:${IMAGE_TAG}
     container_name: realtime-relay
     restart: unless-stopped
     environment:
@@ -61,7 +61,7 @@ services:
         condition: service_started
 
   frontend:
-    image: ${ECR_REGISTRY}/frontend:${IMAGE_TAG}
+    image: ${IMAGE_REGISTRY}/frontend:${IMAGE_TAG}
     container_name: frontend
     restart: unless-stopped
     ports:
