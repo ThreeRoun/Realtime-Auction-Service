@@ -30,11 +30,19 @@ export type AuctionEvent =
   | AuctionExtendedEvent
   | AuctionClosedEvent;
 
+// 로비(scope=lobby) 이벤트: relay가 목록 화면에 필요한 필드만 추려서 보낸다.
+// bidder_id, bid_at, winner_id는 포함되지 않는다.
+export type LobbyEvent =
+  | ConnectedEvent
+  | { event: "bid_placed"; product_id: string; current_price: number }
+  | { event: "auction_extended"; product_id: string; new_end_at: string }
+  | { event: "auction_closed"; product_id: string; final_price: number | null };
+
 export type SocketStatus = "connecting" | "open" | "reconnecting" | "closed";
 
-interface AuctionSocketOptions {
+interface AuctionSocketOptions<T = AuctionEvent> {
   /** 서버에서 이벤트를 받을 때마다 호출 */
-  onEvent: (data: AuctionEvent) => void;
+  onEvent: (data: T) => void;
   /** 끊겼다가 다시 연결됐을 때 호출 (끊긴 동안 놓친 이벤트 보정용) */
   onReconnect?: () => void;
   /** 연결 상태가 바뀔 때마다 호출 (화면 안내 표시용) */
@@ -54,12 +62,28 @@ const wsUrl =
 const BASE_DELAY_MS = 1000;
 const MAX_DELAY_MS = 10000;
 const MAX_RETRIES = 10;
-// relay가 productId 누락 시 사용하는 종료 코드: 다시 연결해도 실패하므로 재시도하지 않는다
+// relay가 productId(또는 scope) 누락 시 사용하는 종료 코드: 다시 연결해도 실패하므로 재시도하지 않는다
 const POLICY_VIOLATION = 1008;
 
+// 상품 상세 화면: 해당 상품 방에 접속
 export function connectAuctionSocket(
   productId: string,
-  options: AuctionSocketOptions
+  options: AuctionSocketOptions<AuctionEvent>
+): AuctionSocketConnection {
+  return connectSocket(`productId=${encodeURIComponent(productId)}`, options);
+}
+
+// 상품 목록 화면: 로비에 접속해 모든 상품의 이벤트를 받음
+export function connectLobbySocket(
+  options: AuctionSocketOptions<LobbyEvent>
+): AuctionSocketConnection {
+  return connectSocket("scope=lobby", options);
+}
+
+// 접속 대상(query)만 다르고 재연결 로직은 상세·목록 화면이 함께 쓴다
+function connectSocket<T>(
+  query: string,
+  options: AuctionSocketOptions<T>
 ): AuctionSocketConnection {
   let socket: WebSocket | null = null;
   let retries = 0;
@@ -70,9 +94,7 @@ export function connectAuctionSocket(
   const open = () => {
     options.onStatusChange?.(hasConnectedBefore ? "reconnecting" : "connecting");
 
-    socket = new WebSocket(
-      `${wsUrl}?productId=${encodeURIComponent(productId)}`
-    );
+    socket = new WebSocket(`${wsUrl}?${query}`);
 
     socket.onopen = () => {
       if (hasConnectedBefore) {
@@ -85,7 +107,7 @@ export function connectAuctionSocket(
 
     socket.onmessage = (event) => {
       try {
-        options.onEvent(JSON.parse(event.data) as AuctionEvent);
+        options.onEvent(JSON.parse(event.data) as T);
       } catch (error) {
         console.error("웹소켓 메시지 파싱 실패:", error);
       }
