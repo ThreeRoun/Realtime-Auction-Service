@@ -1,43 +1,57 @@
 // realtime-relay/publish.js
+// 테스트용 입찰 이벤트를 Redis 'auction_events' 채널로 발행한다.
+// 경매 엔진 없이 relay와 부하 테스트를 검증할 때 사용한다.
+//
+// 사용법:
+//   node publish.js <상품 ID> [발행 횟수=5] [간격(ms)=1500]
+//   예) node publish.js 3fa85f64-5717-4562-b3fc-2c963f66afa6 10 1000
 const Redis = require('ioredis');
-const redis = new Redis({ host: '127.0.0.1', port: 6379 });
 
-// 연속으로 발생시킬 입찰 시나리오 배열
-const bids = [
-  { product_id: '101', current_price: 55000, bidder_id: 'user_kim' },
-  { product_id: '101', current_price: 60000, bidder_id: 'user_lee' },
-  { product_id: '101', current_price: 72000, bidder_id: 'user_park' },
-  { product_id: '101', current_price: 85000, bidder_id: 'user_choi' },
-  { product_id: '101', current_price: 100000, bidder_id: 'user_final' }
-];
+const [productId, countArg, intervalArg] = process.argv.slice(2);
 
-async function runAuctionSimulation() {
-  console.log('🚀 [경매 연속 입찰 시뮬레이션 시작]');
+if (!productId) {
+  console.error('사용법: node publish.js <상품 ID> [발행 횟수=5] [간격(ms)=1500]');
+  process.exit(1);
+}
 
-  for (let i = 0; i < bids.length; i++) {
-    const bid = bids[i];
+const count = Number(countArg) || 5;
+const intervalMs = Number(intervalArg) || 1500;
+
+const redis = new Redis({
+  host: process.env.REDIS_HOST || 'localhost',
+  port: Number(process.env.REDIS_PORT) || 6379,
+});
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function run() {
+  console.log(`🚀 [테스트 입찰 발행 시작] 상품 ${productId}, ${count}회, ${intervalMs}ms 간격`);
+
+  for (let i = 1; i <= count; i++) {
     const payload = {
       event: 'bid_placed',
-      product_id: bid.product_id,
-      current_price: bid.current_price,
-      bidder_id: bid.bidder_id,
-      bid_at: new Date().toISOString()
+      product_id: productId,
+      current_price: 10000 * (i + 1),
+      bidder_id: 'load-tester',
+      bid_at: new Date().toISOString(),
+      // 부하 테스트에서 발행 → 수신 지연을 계산하기 위한 발행 시각(epoch ms).
+      // 실제 경매 엔진 이벤트에는 없는 테스트 전용 필드다.
+      sent_at: Date.now(),
     };
 
-    const count = await redis.publish('auction_events', JSON.stringify(payload));
-    console.log(`[${i + 1}/${bids.length}] ${bid.product_id}번 상품 ${bid.current_price}원 입찰 발행 완료 (수신 중계 서버: ${count})`);
+    const receivers = await redis.publish('auction_events', JSON.stringify(payload));
+    console.log(`[${i}/${count}] ${payload.current_price}원 발행 (구독 중인 relay: ${receivers})`);
 
-    // 1.5초 간격으로 다음 입찰 진행 (실제 입찰 지연 재현)
-    if (i < bids.length - 1) {
-      await new Promise(resolve => setTimeout(resolve, 1500));
+    if (i < count) {
+      await sleep(intervalMs);
     }
   }
 
-  console.log('🏁 모든 연속 입찰 발행이 완료되었습니다.');
-  process.exit(0);
+  console.log('🏁 발행 완료');
+  await redis.quit();
 }
 
-runAuctionSimulation().catch(err => {
+run().catch((err) => {
   console.error('발행 중 오류 발생:', err.message);
   process.exit(1);
 });
