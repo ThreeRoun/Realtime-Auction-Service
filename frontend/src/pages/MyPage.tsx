@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { jwtDecode } from "jwt-decode";
 import { getUserProfile, type UserProfile } from "../api/auth";
+import { Link } from "react-router-dom";
+import { getMyProducts } from "../api/products";
+import type { Product } from "../data/products";
 
 interface JwtPayload {
   sub: string;
@@ -8,8 +11,13 @@ interface JwtPayload {
 
 function MyPage() {
   const [user, setUser] = useState<UserProfile | null>(null);
+  const [registeredAuctions, setRegisteredAuctions] = useState<Product[]>([]);
+  const [participatedAuctions, setParticipatedAuctions] = useState<Product[]>([]);
+  const [wonAuctions, setWonAuctions] = useState<Product[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [auctionsLoading, setAuctionsLoading] = useState(true);
+  const [auctionsError, setAuctionsError] = useState("");
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -24,14 +32,30 @@ function MyPage() {
         const profile = await getUserProfile(decoded.sub);
 
         setUser(profile);
+
+        const [registered, participated] = await Promise.all([
+          getMyProducts(decoded.sub, "registered"),
+          getMyProducts(decoded.sub, "participated"),
+        ]);
+
+        setRegisteredAuctions(registered);
+        setParticipatedAuctions(participated);
+        const won = participated.filter(
+          (product) => product.winnerId === decoded.sub
+        );
+
+        setWonAuctions(won);
       } catch (err) {
-        setError(
+        const message =
           err instanceof Error
             ? err.message
-            : "사용자 정보를 불러오지 못했습니다."
-        );
+            : "정보를 불러오지 못했습니다.";
+
+        setError(message);
+        setAuctionsError(message);
       } finally {
         setLoading(false);
+        setAuctionsLoading(false);
       }
     };
 
@@ -70,9 +94,77 @@ function MyPage() {
       <section className="mypage-auctions">
         <h2>참여 중인 경매</h2>
 
-        <div className="mypage-empty">
-          현재 참여 중인 경매가 없습니다.
-        </div>
+        {auctionsLoading ? (
+          <p>경매 목록을 불러오는 중입니다.</p>
+        ) : auctionsError ? (
+          <p role="alert">{auctionsError}</p>
+        ) : participatedAuctions.length === 0 ? (
+          <div className="mypage-empty">
+            현재 참여 중인 경매가 없습니다.
+          </div>
+        ) : (
+          <ul>
+            {participatedAuctions.map((product) => (
+              <li key={product.id}>
+                <Link to={`/products/${product.id}`}>
+                  {product.title}
+                </Link>
+                <p>현재가: {product.currentPrice.toLocaleString()}원</p>
+                <p>상태: {product.status}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <section className="mypage-auctions">
+        <h2>내가 등록한 경매</h2>
+
+        {auctionsLoading ? (
+          <p>경매 목록을 불러오는 중입니다.</p>
+        ) : auctionsError ? (
+          <p role="alert">{auctionsError}</p>
+        ) : registeredAuctions.length === 0 ? (
+          <div className="mypage-empty">
+            등록한 경매가 없습니다.
+          </div>
+        ) : (
+          <ul>
+            {registeredAuctions.map((product) => (
+              <li key={product.id}>
+                <Link to={`/products/${product.id}`}>
+                  {product.title}
+                </Link>
+                <p>현재가: {product.currentPrice.toLocaleString()}원</p>
+                <p>상태: {product.status}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <section className="mypage-auctions">
+        <h2>내가 낙찰받은 경매</h2>
+
+        {auctionsLoading ? (
+          <p>경매 목록을 불러오는 중입니다.</p>
+        ) : auctionsError ? (
+          <p role="alert">{auctionsError}</p>
+        ) : wonAuctions.length === 0 ? (
+          <div className="mypage-empty">
+            낙찰받은 경매가 없습니다.
+          </div>
+        ) : (
+          <ul>
+            {wonAuctions.map((product) => (
+              <li key={product.id}>
+                <Link to={`/products/${product.id}`}>
+                  {product.title}
+                </Link>
+                <p>낙찰가: {product.currentPrice.toLocaleString()}원</p>
+                <p>상태: {product.status}</p>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     </main>
   );

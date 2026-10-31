@@ -22,6 +22,13 @@ export async function createProduct(request: ProductCreateRequest) {
     body: JSON.stringify(request),
   });
 
+  if (response.status === 401) {
+    localStorage.removeItem("accessToken");
+    localStorage.removeItem("expiresAt");
+    window.dispatchEvent(new Event("auth-change"));
+    throw new Error("로그인이 만료되었습니다. 다시 로그인해 주세요.");
+  }
+
   if (!response.ok) {
     throw new Error(`상품 등록에 실패했습니다. (${response.status})`);
   }
@@ -52,6 +59,25 @@ export async function uploadProductImage(
 
   if (!response.ok) {
     throw new Error(`이미지 업로드에 실패했습니다. (${response.status})`);
+  }
+}
+
+export async function getMyProducts(
+  userId: string,
+  type: "registered" | "participated"
+): Promise<Product[]> {
+  const params = new URLSearchParams();
+
+  if (type === "registered") {
+    params.set("sellerId", userId);
+  } else {
+    params.set("biddedByUserId", userId);
+  }
+
+  const response = await fetch(`/api/products?${params.toString()}`);
+
+  if (!response.ok) {
+    throw new Error(`경매 목록 조회에 실패했습니다. (${response.status})`);
   }
 
   return response.json();

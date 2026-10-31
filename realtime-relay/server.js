@@ -5,9 +5,9 @@ const { WebSocketServer, WebSocket } = require('ws');
 const Redis = require('ioredis');
 
 const PORT = process.env.PORT || 4000;
-const REDIS_HOST = process.env.REDIS_HOST || 'auction-redis';
+const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
 const REDIS_PORT = Number(process.env.REDIS_PORT) || 6379;
-// wss: WebSocket Server (8080 문지기인 서버 전체 관리자) 
+// wss: WebSocket Server (4000번 포트의 서버 전체 관리자)
 const wss = new WebSocketServer({ port : PORT });
 console.log(`[중계 엔진] WebSocket 서버 포트: ${PORT}`);
 
@@ -33,6 +33,36 @@ redisSubscriber.on('error', (err) => {
 
 // key가 productId이고, value가 참가자 set인 map
 const rooms = new Map(); 
+
+// 상품 목록 화면용 로비 방의 key. 상품 ID(UUID)와 겹치지 않는 이름을 쓴다.
+// 로비 접속자는 모든 상품의 이벤트를 받는다.
+const LOBBY = '__lobby__';
+
+// 특정 방의 열린 소켓 전원에게 문자열을 보내고, 방 인원 수를 반환한다.
+function broadcast(roomKey, payload) {
+  const room = rooms.get(roomKey);
+  if (!room || room.size === 0) {
+    return 0;
+  }
+  room.forEach((client) => {
+    // 파이프라인이 정상적으로 열려(OPEN) 있을 때만 전송
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(payload);
+    }
+  });
+  return room.size;
+}
+
+// 목록 화면에 필요한 필드만 추린다.
+// 로비는 접속자가 많고 모든 상품의 이벤트를 받으므로, 입찰자 ID 같은 불필요한 정보는 빼서
+// 전송량과 정보 노출을 줄인다.
+function toLobbyPayload(eventData, productId) {
+  const slim = { event: eventData.event, product_id: String(productId) };
+  if (eventData.current_price !== undefined) slim.current_price = eventData.current_price;
+  if (eventData.new_end_at !== undefined) slim.new_end_at = eventData.new_end_at;
+  if (eventData.final_price !== undefined) slim.final_price = eventData.final_price;
+  return JSON.stringify(slim);
+}
 // key에 대해 rooms.get("101"); 등으로 특정 상품 추출
 // value는 해당 상품의 경매 화면에 들어와 있는 브라우저들의 소켓 객체 set이다.
 // 아래와 같이 101번 상품에 들어와 있는 클라이언트들에게 브로드캐스트 가능.  
@@ -69,22 +99,15 @@ redisSubscriber.on('message', (channel, rawString) => {
       return;
     }
 
-    // 만든 js 객체에서 productId 추출해서 해당 상품 방 Set을 targetRoom으로 꺼내온다.
-    const targetRoom = rooms.get(String(pId));
-    // 방이 존재한다면 방 안의 소켓들을 forEach로 돌면서 전송한다.
-    if(targetRoom && targetRoom.size > 0){
-      console.log(`\n📢 [중계] ${pId}번 방 (${targetRoom.size}명)에게 데이터 살포`);
+    // 1) 해당 상품 방에는 엔진이 보낸 원본 문자열을 그대로 전송
+    const sent = broadcast(String(pId), rawString);
+    // 2) 로비(상품 목록 화면)에는 필요한 필드만 추려서 전송
+    const lobbySent = broadcast(LOBBY, toLobbyPayload(eventData, pId));
 
-      targetRoom.forEach(client => {
-        // 사용자가 막 브라우저 창을 닫았거나 네트워크가 끊겨 파이프라인이 닫히는 중일 수도 있으므로,
-        // 파이프라인이 정상적으로 열려(OPEN) 있을 때만 데이터 전송.
-        if(client.readyState === WebSocket.OPEN){
-          // 클라이언트에 보낼 데이터는 A가 보낸 원본 문자열을 그대로 전송
-          client.send(rawString);
-        }
-      });
-    } else{
-      console.log(`\n ⚠️ [중계 패스] ${pId}번 방 접속자가 없습니다.`);
+    if (sent === 0 && lobbySent === 0) {
+      console.log(`\n ⚠️ [중계 패스] ${pId}번 방과 로비 모두 접속자가 없습니다.`);
+    } else {
+      console.log(`\n📢 [중계] ${pId}번 방 (${sent}명), 로비 (${lobbySent}명)에게 데이터 살포`);
     }
   } catch (err) {
     console.error(`❌ [메시지 파싱 에러]:`, err.message);
@@ -132,47 +155,53 @@ wss.on('connection', (ws, req)=>{
   // [프로토콜://도메인/경로]를 임의로 앞에 붙여줌.
   const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
 
-  // 쿼리 스트링에서 productId를 꺼내기(key=productId의 item=101을 꺼내기)
-  // URL 내부 객체 => searchParams: URLSearchParams { 'productId' => '101' }
+  // 쿼리 스트링에서 접속 대상을 꺼낸다.
+  // - 상품 상세 화면: ?productId=<상품 ID> → 해당 상품 방
+  // - 상품 목록 화면: ?scope=lobby          → 로비 방 (모든 상품의 이벤트 수신)
+  const scope = parsedUrl.searchParams.get('scope');
   const productId = parsedUrl.searchParams.get('productId') || parsedUrl.searchParams.get('product_id');
 
-  // productId가 없는 경우 잘못된 접근이므로 ws.close()로 연결을 끊는다. 
-  if(!productId || !productId.trim()){
-    ws.close(1008, 'productId 파라미터가 필요합니다.');
+  let roomKey;
+  if (scope === 'lobby') {
+    roomKey = LOBBY;
+  } else if (productId && productId.trim()) {
+    roomKey = productId.trim();
+  } else {
+    // 둘 다 없으면 잘못된 접근이므로 연결을 끊는다.
+    ws.close(1008, 'productId 또는 scope=lobby 파라미터가 필요합니다.');
     return;
   }
 
-  const cleanProductId = productId.trim();
+  const roomLabel = roomKey === LOBBY ? '로비' : roomKey;
 
-  // rooms에서 키가 productId인 상품 방이 있었는지 확인하고,
-  if(!rooms.has(cleanProductId)){ // 없었다면,
-    // Key가 productId인 새 방을 만든다.
-    rooms.set(cleanProductId, new Set());
+  // rooms에서 해당 방이 없었다면 새로 만든다.
+  if(!rooms.has(roomKey)){
+    rooms.set(roomKey, new Set());
   }
-  // productId 방의 소켓 모음 Set에 새로운 소켓(손님)을 추가한다. 
-  rooms.get(cleanProductId).add(ws);
-  console.log(`[클라이언트 접속] 방: ${cleanProductId} (현재 인원: ${rooms.get(cleanProductId).size}명)`);   // ← 추가
-  // 손님에게 환영 메세지를 보낸다. 
+  // 방의 소켓 모음 Set에 새로운 소켓(손님)을 추가한다.
+  rooms.get(roomKey).add(ws);
+  console.log(`[클라이언트 접속] 방: ${roomLabel} (현재 인원: ${rooms.get(roomKey).size}명)`);
+  // 손님에게 환영 메세지를 보낸다.
   ws.send(JSON.stringify({
     event: 'connected',
-    message: `${cleanProductId}번 경매 방 접속 성공`
+    message: roomKey === LOBBY ? '경매 로비 접속 성공' : `${roomKey}번 경매 방 접속 성공`
   }));
 
 
   ws.on('close', () => {
-  // 닫고자 하는 방의 손님 소켓 모음 Set을 꺼낸다. 
-    const room=rooms.get(cleanProductId);
+  // 닫고자 하는 방의 손님 소켓 모음 Set을 꺼낸다.
+    const room=rooms.get(roomKey);
 
     // 방이 존재할 경우, 정리 작업 수행
     if(room){
       // Set에서 방금 나간 손님의 소켓 ws를 뺀다.
       room.delete(ws);
-      console.log(`[클라이언트 연결 해제] 방: ${cleanProductId} (남은 인원: ${room.size}명)`);
-    
+      console.log(`[클라이언트 연결 해제] 방: ${roomLabel} (남은 인원: ${room.size}명)`);
+
       // 뺀 이후에 방에 남은 손님의 수가 0이면 방 자체를 Map에서 삭제한다.
       if(room.size===0){
-        rooms.delete(cleanProductId);
-        console.log(`[방 삭제] 인원이 없어 방 ${cleanProductId}을(를) 정리합니다.`);
+        rooms.delete(roomKey);
+        console.log(`[방 삭제] 인원이 없어 방 ${roomLabel}을(를) 정리합니다.`);
       }
     }
   });

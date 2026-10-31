@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import type { Product } from "../data/products";
-import { placeBid } from "../api/bids";
+import {
+  placeBid,
+  getBidHistory,
+  type BidHistoryResponse,
+} from "../api/bids";
 import {
   connectAuctionSocket,
   type SocketStatus,
@@ -10,6 +14,7 @@ import {
 function ProductDetail() {
   const { id } = useParams();
   const [product, setProduct] = useState<Product | null>(null);
+  const [bidHistory, setBidHistory] = useState<BidHistoryResponse[]>([]);
   const [currentPrice, setCurrentPrice] = useState(0);
   const [endAt, setEndAt] = useState("");
   const [isAuctionClosed, setIsAuctionClosed] = useState(false);
@@ -45,10 +50,38 @@ function ProductDetail() {
       return;
     }
 
+    let cancelled = false;
+
+    getBidHistory(productId)
+      .then((history) => {
+        if (!cancelled) {
+          setBidHistory(history);
+        }
+      })
+      .catch((error) => {
+        console.error("입찰 내역 조회 실패:", error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [productId]);
+
+  useEffect(() => {
+    if (!productId) {
+      return;
+    }
+
     const connection = connectAuctionSocket(productId, {
       onEvent: (data) => {
         if (data.event === "bid_placed") {
           setCurrentPrice(data.current_price);
+          
+          getBidHistory(productId)
+            .then(setBidHistory)
+            .catch((error) => {
+              console.error("입찰 후 최고 입찰자 갱신 실패:", error);
+            });
         }
 
         if (data.event === "auction_extended") {
@@ -80,6 +113,13 @@ function ProductDetail() {
     };
   }, [productId]);
 
+  const highestBid = bidHistory
+    .filter((bid) => bid.isValid)
+    .reduce<BidHistoryResponse | null>(
+      (highest, bid) =>
+        highest === null || bid.amount > highest.amount ? bid : highest,
+      null
+    );
 
   if (!product) {
     return (
@@ -157,6 +197,7 @@ function ProductDetail() {
         <div className="product-detail-info">
           <h1>{product.title}</h1>
           <p>{product.description}</p>
+          <p>판매자: {product.sellerUsername ?? "정보 없음"}</p>
 
           {socketStatus === "reconnecting" && (
             <p className="socket-status">
@@ -176,6 +217,10 @@ function ProductDetail() {
 
             <p>
               현재가: <strong>{currentPrice.toLocaleString()}원</strong>
+            </p>
+
+            <p>
+              최고 입찰자: {highestBid ? highestBid.bidderId : "아직 입찰자가 없습니다."}
             </p>
 
             <p>
@@ -206,6 +251,23 @@ function ProductDetail() {
             onChange={(e) => setBidAmount(e.target.value)}
             placeholder="입찰 금액을 입력하세요"
           />
+          <button
+            type="button"
+            onClick={() => {
+              const minimumBid = currentPrice + product.bidUnit;
+              const currentAmount = Number(bidAmount);
+
+              const nextAmount =
+                currentAmount < minimumBid
+                  ? minimumBid
+                  : currentAmount + product.bidUnit;
+
+              setBidAmount(String(nextAmount));
+            }}
+            disabled={isBidding || isAuctionClosed}
+          >
+            +{product.bidUnit.toLocaleString()}원
+          </button>
           <button
             type="button"
             onClick={handleBid}

@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import type { Product } from "../data/products";
+import AuctionCountdown from "./AuctionCountdown";
 
 interface ProductCardProps {
   product: Product;
@@ -33,8 +34,11 @@ function ProductCard({ product }: ProductCardProps) {
         </div>
 
         <div className="product-end-time">
-          마감: {product.endAt}
+          <div>시작: {product.startAt || "정보 없음"}</div>
+          <div>마감: {product.endAt}</div>
         </div>
+
+        <AuctionCountdown endAt={product.endAt} />
 
         <Link to={`/products/${product.id}`} className="detail-button">
           경매 참여
