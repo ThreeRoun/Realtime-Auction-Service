@@ -5,9 +5,9 @@ const { WebSocketServer, WebSocket } = require('ws');
 const Redis = require('ioredis');
 
 const PORT = process.env.PORT || 4000;
-const REDIS_HOST = process.env.REDIS_HOST || 'auction-redis';
+const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
 const REDIS_PORT = Number(process.env.REDIS_PORT) || 6379;
-// wss: WebSocket Server (8080 문지기인 서버 전체 관리자) 
+// wss: WebSocket Server (4000번 포트의 서버 전체 관리자)
 const wss = new WebSocketServer({ port : PORT });
 console.log(`[중계 엔진] WebSocket 서버 포트: ${PORT}`);
 
