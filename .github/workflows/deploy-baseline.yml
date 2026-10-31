@@ -2,7 +2,8 @@ name: Deploy to school server (baseline)
 
 # baseline 브랜치에 PR이 머지(=push)되면:
 #   1) 3개 서비스 이미지를 빌드해 GHCR에 태그(커밋 SHA + baseline-latest)로 push
-#   2) SSH(키 인증)로 학교 VDI에 접속해 docker-compose.prod.yml로 배포
+#   2) 학교 VDI에 설치된 self-hosted runner가 docker-compose.prod.yml로 배포
+#      (학교 방화벽이 외부 인바운드 SSH를 막으므로 서버에서 GitHub로 나가는 연결만 사용)
 #   3) 서버 내부에서 localhost로 헬스체크 (포트 외부 공개 불필요)
 
 on:
@@ -46,53 +47,40 @@ jobs:
 
   deploy:
     needs: build-and-push
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, school-server]
     steps:
-      # GHCR 패키지가 private일 수 있으므로 job 실행 동안만 유효한 GITHUB_TOKEN으로 서버에서 로그인 후 pull
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.2.0
-        env:
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-          GHCR_USER: ${{ github.actor }}
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # GHCR 패키지가 private일 수 있으므로 GITHUB_TOKEN으로 로그인 (job 종료 시 자동 로그아웃)
+      - name: Login to GHCR
+        uses: docker/login-action@v3
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT || 22 }}
-          command_timeout: 15m
-          envs: DEPLOY_PATH,GHCR_USER,GHCR_TOKEN,IMAGE_REGISTRY,IMAGE_TAG
-          script: |
-            set -eu
-            cd "$DEPLOY_PATH"
-            git fetch origin baseline
-            git reset --hard origin/baseline
-            trap 'docker logout ghcr.io' EXIT
-            echo "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_USER" --password-stdin
-            docker compose -f docker-compose.prod.yml pull
-            docker compose -f docker-compose.prod.yml up -d
-            docker image prune -f
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Deploy with docker compose
+        working-directory: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          set -eu
+          git fetch origin baseline
+          git reset --hard origin/baseline
+          docker compose -f docker-compose.prod.yml pull
+          docker compose -f docker-compose.prod.yml up -d
+          docker image prune -f
 
   health-check:
     needs: deploy
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, school-server]
     steps:
       - name: Verify frontend and product API on server
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT || 22 }}
-          script: |
-            set -eu
-            for path in / /api/products; do
-              curl --fail --show-error --silent \
-                --connect-timeout 5 \
-                --max-time 15 \
-                --retry 10 \
-                --retry-delay 5 \
-                --retry-connrefused \
-                --output /dev/null \
-                "http://localhost:3000${path}"
-            done
+        run: |
+          set -eu
+          for path in / /api/products; do
+            curl --fail --show-error --silent \
+              --connect-timeout 5 \
+              --max-time 15 \
+              --retry 10 \
+              --retry-delay 5 \
+              --retry-connrefused \
+              --output /dev/null \
+              "http://localhost:3000${path}"
+          done
