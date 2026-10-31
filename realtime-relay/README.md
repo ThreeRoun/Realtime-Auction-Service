@@ -16,11 +16,14 @@
 
 ### 1. 접속 엔드포인트 (Client → Server)
 
-- **URL:** `ws://{HOST}:{PORT}?productId={productId}`
-- **로컬 테스트 주소:** `ws://localhost:4000?productId={상품 UUID}`
-- **Query Parameter:**
-  - `productId` (필수): 입장하려는 경매 상품의 ID (UUID)
-  - 누락 시 서버가 `1008` 코드로 연결을 종료합니다.
+접속 목적에 따라 두 가지 방식으로 연결합니다.
+
+| 용도 | URL | 수신 이벤트 |
+| --- | --- | --- |
+| 상품 상세 화면 | `ws://{HOST}:{PORT}?productId={상품 UUID}` | 해당 상품의 이벤트 (원본 그대로) |
+| 상품 목록 화면 | `ws://{HOST}:{PORT}?scope=lobby` | 모든 상품의 이벤트 (필요한 필드만) |
+
+- `productId`와 `scope=lobby`가 모두 없으면 서버가 `1008` 코드로 연결을 종료합니다.
 
 ### 2. 접속 성공 응답 (Server → Client)
 
@@ -32,6 +35,8 @@
   "message": "{productId}번 경매 방 접속 성공"
 }
 ```
+
+로비로 접속한 경우 `message`는 `"경매 로비 접속 성공"`입니다.
 
 ---
 
@@ -75,6 +80,25 @@
   "product_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
   "winner_id": "11111111-1111-1111-1111-111111111111",
   "final_price": 75000
+}
+```
+
+### 4. 로비 이벤트 (`scope=lobby` 접속 시)
+
+로비는 모든 상품의 이벤트를 받으며, 목록 화면에 필요한 필드만 전달합니다.
+`bidder_id`, `bid_at`, `winner_id`는 포함되지 않습니다.
+
+| 이벤트 | 포함 필드 |
+| --- | --- |
+| `bid_placed` | `event`, `product_id`, `current_price` |
+| `auction_extended` | `event`, `product_id`, `new_end_at` |
+| `auction_closed` | `event`, `product_id`, `final_price` |
+
+```json
+{
+  "event": "bid_placed",
+  "product_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "current_price": 75000
 }
 ```
 
