@@ -14,6 +14,7 @@ function Login() {
       const result = await login({ username, password });
       localStorage.setItem("accessToken", result.accessToken);
       localStorage.setItem("username", username);
+      localStorage.setItem("expiresAt", result.expiresAt);
       window.dispatchEvent(new Event("auth-change"));
       console.log("로그인 성공");
       navigate("/");

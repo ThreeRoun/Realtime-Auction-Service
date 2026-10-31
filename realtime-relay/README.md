@@ -16,11 +16,14 @@
 
 ### 1. 접속 엔드포인트 (Client → Server)
 
-- **URL:** `ws://{HOST}:{PORT}?productId={productId}`
-- **로컬 테스트 주소:** `ws://localhost:4000?productId={상품 UUID}`
-- **Query Parameter:**
-  - `productId` (필수): 입장하려는 경매 상품의 ID (UUID)
-  - 누락 시 서버가 `1008` 코드로 연결을 종료합니다.
+접속 목적에 따라 두 가지 방식으로 연결합니다.
+
+| 용도 | URL | 수신 이벤트 |
+| --- | --- | --- |
+| 상품 상세 화면 | `ws://{HOST}:{PORT}?productId={상품 UUID}` | 해당 상품의 이벤트 (원본 그대로) |
+| 상품 목록 화면 | `ws://{HOST}:{PORT}?scope=lobby` | 모든 상품의 이벤트 (필요한 필드만) |
+
+- `productId`와 `scope=lobby`가 모두 없으면 서버가 `1008` 코드로 연결을 종료합니다.
 
 ### 2. 접속 성공 응답 (Server → Client)
 
@@ -32,6 +35,8 @@
   "message": "{productId}번 경매 방 접속 성공"
 }
 ```
+
+로비로 접속한 경우 `message`는 `"경매 로비 접속 성공"`입니다.
 
 ---
 
@@ -78,6 +83,25 @@
 }
 ```
 
+### 4. 로비 이벤트 (`scope=lobby` 접속 시)
+
+로비는 모든 상품의 이벤트를 받으며, 목록 화면에 필요한 필드만 전달합니다.
+`bidder_id`, `bid_at`, `winner_id`는 포함되지 않습니다.
+
+| 이벤트 | 포함 필드 |
+| --- | --- |
+| `bid_placed` | `event`, `product_id`, `current_price` |
+| `auction_extended` | `event`, `product_id`, `new_end_at` |
+| `auction_closed` | `event`, `product_id`, `final_price` |
+
+```json
+{
+  "event": "bid_placed",
+  "product_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "current_price": 75000
+}
+```
+
 ---
 
 ## 🚀 Local Run (로컬 실행 방법)
@@ -87,7 +111,7 @@
 | 변수 | 기본값 | 설명 |
 | --- | --- | --- |
 | `PORT` | `4000` | WebSocket 서버 포트 |
-| `REDIS_HOST` | `auction-redis` | Redis 호스트 (컨테이너 환경 기준) |
+| `REDIS_HOST` | `localhost` | Redis 호스트 (컨테이너 환경에서는 compose가 `auction-redis`로 지정) |
 | `REDIS_PORT` | `6379` | Redis 포트 |
 
 ### 실행 방법
@@ -99,8 +123,8 @@ docker compose up -d redis
 # 2. 의존성 설치
 cd realtime-relay && npm install
 
-# 3. 서버 구동 (로컬 실행 시 REDIS_HOST 지정 필수)
-REDIS_HOST=localhost node server.js
+# 3. 서버 구동
+node server.js
 ```
 
 `✅ [Redis] 'auction_events' 채널 구독 완료!` 로그가 보이면 정상입니다.
@@ -121,6 +145,6 @@ docker exec -it auction-redis redis-cli PUBLISH auction_events \
 - **PUBLISH 결과가 `(integer) 0`이고 이벤트가 오지 않음**
   Mac에 Homebrew 등으로 설치한 Redis가 켜져 있으면, `localhost:6379` 연결이 도커 Redis가 아닌 로컬 Redis로 갑니다. `lsof -nP -iTCP:6379 -sTCP:LISTEN`으로 `redis-server`가 보이면 `brew services stop redis`로 끈 뒤 relay(와 엔진)를 재시작하세요.
 - **`❌ [Redis 연결 오류]`가 반복됨**
-  `REDIS_HOST=localhost` 없이 실행한 경우입니다. 기본값 `auction-redis`는 컨테이너 네트워크에서만 접근 가능합니다.
+  Redis 컨테이너가 실행 중인지 확인하세요(`docker compose up -d redis`). 다른 호스트의 Redis를 쓰려면 `REDIS_HOST`로 지정하세요.
 - **`EADDRINUSE` (포트 사용 중)**
   `docker compose up`으로 띄운 `realtime-relay` 컨테이너가 4000 포트를 쓰고 있을 수 있습니다. `docker compose stop realtime-relay` 후 다시 실행하세요.
