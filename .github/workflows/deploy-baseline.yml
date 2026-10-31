@@ -1,26 +1,22 @@
-name: Deploy to AWS (baseline)
+name: Deploy to school server (baseline)
 
 # baseline 브랜치에 PR이 머지(=push)되면:
-#   1) 3개 서비스 이미지를 빌드해 ECR에 태그(커밋 SHA + baseline-latest)로 push
-#   2) SSH 없이 AWS SSM Run Command로 EC2에 배포 명령 전달 (docker-compose.prod.yml)
-#   3) 배포 후 헬스체크로 정상 기동 여부 검증
-#
-# TODO: 서버/AWS 리소스 준비 후 아래 Secrets 등록
-#   - AWS_REGION, ECR_REGISTRY (예: 123456789012.dkr.ecr.ap-northeast-2.amazonaws.com)
-#   - AWS_ROLE_TO_ASSUME (ECR push + SSM 권한을 가진 IAM Role ARN, OIDC) — 장기 액세스 키 대신 OIDC 권장
-#   - EC2_INSTANCE_ID, DEPLOY_PATH (SSM 배포용)
-#   - AWS_HOST (헬스체크에서 서비스 포트로 직접 접속하기 위한 퍼블릭 IP, SSH와 무관)
+#   1) 3개 서비스 이미지를 빌드해 GHCR에 태그(커밋 SHA + baseline-latest)로 push
+#   2) SSH(키 인증)로 학교 VDI에 접속해 docker-compose.prod.yml로 배포
+#   3) 서버 내부에서 localhost로 헬스체크 (포트 외부 공개 불필요)
 
 on:
   push:
     branches: [baseline]
 
 permissions:
-  id-token: write   # AWS OIDC 인증에 필요
   contents: read
+  packages: write   # GHCR push에 필요
 
 env:
   IMAGE_TAG: ${{ github.sha }}
+  # GHCR 이미지 경로는 소문자여야 함
+  IMAGE_REGISTRY: ghcr.io/threeroun
 
 jobs:
   build-and-push:
@@ -32,15 +28,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Login to GHCR
+        uses: docker/login-action@v3
         with:
-          aws-region: ${{ secrets.AWS_REGION }}
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-
-      - name: Login to Amazon ECR
-        id: ecr-login
-        uses: aws-actions/amazon-ecr-login@v2
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push ${{ matrix.service }}
         uses: docker/build-push-action@v6
@@ -48,78 +41,58 @@ jobs:
           context: ./${{ matrix.service }}
           push: true
           tags: |
-            ${{ steps.ecr-login.outputs.registry }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}
-            ${{ steps.ecr-login.outputs.registry }}/${{ matrix.service }}:baseline-latest
+            ${{ env.IMAGE_REGISTRY }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}
+            ${{ env.IMAGE_REGISTRY }}/${{ matrix.service }}:baseline-latest
 
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      # GHCR 패키지가 private일 수 있으므로 job 실행 동안만 유효한 GITHUB_TOKEN으로 서버에서 로그인 후 pull
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          aws-region: ${{ secrets.AWS_REGION }}
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-
-      # TODO: 아래 GitHub Secrets를 실제 서버 준비 후 등록
-      # - EC2_INSTANCE_ID: SSM 대상 인스턴스 ID (예: i-0abcdef1234567890)
-      # - DEPLOY_PATH: 서버 상 저장소 경로 (예: /home/ubuntu/Realtime-Auction-Service)
-      # - ECR_REGISTRY: docker-compose.prod.yml에서 이미지 경로 치환에 사용
-      - name: Deploy via AWS SSM (no SSH)
-        run: |
-          set -e
-          COMMAND_ID=$(aws ssm send-command \
-            --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
-            --document-name "AWS-RunShellScript" \
-            --parameters commands="[
-              \"set -eu\",
-              \"cd ${{ secrets.DEPLOY_PATH }}\",
-              \"export ECR_REGISTRY=${{ secrets.ECR_REGISTRY }}\",
-              \"export IMAGE_TAG=${{ env.IMAGE_TAG }}\",
-              \"export HOME=/root\",
-              \"git config --global --add safe.directory '${{ secrets.DEPLOY_PATH }}'\",
-              \"git fetch origin baseline\",
-              \"git reset --hard origin/baseline\",
-              \"bash -o pipefail -c 'aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}'\",
-              \"docker compose -f docker-compose.prod.yml pull\",
-              \"docker compose -f docker-compose.prod.yml up -d\",
-              \"docker image prune -f\"
-            ]" \
-            --query "Command.CommandId" --output text)
-
-          WAIT_EXIT=0
-          aws ssm wait command-executed \
-            --command-id "$COMMAND_ID" \
-            --instance-id "${{ secrets.EC2_INSTANCE_ID }}" || WAIT_EXIT=$?
-
-          aws ssm get-command-invocation \
-            --command-id "$COMMAND_ID" \
-            --instance-id "${{ secrets.EC2_INSTANCE_ID }}"
-
-          exit "$WAIT_EXIT"
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          command_timeout: 15m
+          envs: DEPLOY_PATH,GHCR_USER,GHCR_TOKEN,IMAGE_REGISTRY,IMAGE_TAG
+          script: |
+            set -eu
+            cd "$DEPLOY_PATH"
+            git fetch origin baseline
+            git reset --hard origin/baseline
+            trap 'docker logout ghcr.io' EXIT
+            echo "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_USER" --password-stdin
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d
+            docker image prune -f
 
   health-check:
     needs: deploy
     runs-on: ubuntu-latest
     steps:
-      - name: Verify frontend is serving the page
-        run: |
-          curl --fail --show-error --silent \
-            --connect-timeout 5 \
-            --max-time 15 \
-            --retry 5 \
-            --retry-delay 5 \
-            --retry-connrefused \
-            --output /dev/null \
-            "http://${{ secrets.AWS_HOST }}:3000/"
-
-      - name: Verify product API through frontend
-        run: |
-          curl --fail --show-error --silent \
-            --connect-timeout 5 \
-            --max-time 15 \
-            --retry 5 \
-            --retry-delay 5 \
-            --retry-connrefused \
-            --output /dev/null \
-            "http://${{ secrets.AWS_HOST }}:3000/api/products"
+      - name: Verify frontend and product API on server
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            set -eu
+            for path in / /api/products; do
+              curl --fail --show-error --silent \
+                --connect-timeout 5 \
+                --max-time 15 \
+                --retry 10 \
+                --retry-delay 5 \
+                --retry-connrefused \
+                --output /dev/null \
+                "http://localhost:3000${path}"
+            done
