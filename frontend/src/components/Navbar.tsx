@@ -25,9 +25,14 @@ function Navbar() {
 
   const [isLoggedIn, setIsLoggedIn] = useState(hasValidToken);
 
+  const [username, setUsername] = useState(
+    () => localStorage.getItem("username") || ""
+  );
+
   useEffect(() => {
     const updateAuthState = () => {
       setIsLoggedIn(hasValidToken());
+      setUsername(localStorage.getItem("username") || "");
     };
 
     window.addEventListener("auth-change", updateAuthState);
@@ -64,8 +69,10 @@ function Navbar() {
 
   const handleLogout = () => {
     localStorage.removeItem("accessToken");
+    localStorage.removeItem("username");
     localStorage.removeItem("expiresAt");
     setIsLoggedIn(false);
+    setUsername("");
     window.dispatchEvent(new Event("auth-change"));
     navigate("/login");
   };
@@ -82,9 +89,12 @@ function Navbar() {
         <Link to="/mypage">마이페이지</Link>
 
         {isLoggedIn ? (
-          <button type="button" onClick={handleLogout}>
-            로그아웃
-          </button>
+          <>
+            {username && <span className="navbar-username">{username}님</span>}
+            <button type="button" onClick={handleLogout}>
+              로그아웃
+            </button>
+          </>
         ) : (
           <>
             <Link to="/login">로그인</Link>

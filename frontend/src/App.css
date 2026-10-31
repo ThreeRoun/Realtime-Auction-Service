@@ -176,6 +176,24 @@
   font-size: 16px;
 }
 
+/* 상품 상세 - 입찰 입력 UI */
+.product-detail-info input[type="number"] {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+
+.product-detail-info button {
+  margin-bottom: 10px;
+}
+
+.product-detail-info button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* 로그인 / 상품 등록 */
 .login-container,
 .create-container {
@@ -320,4 +338,15 @@
   .product-detail-image {
     min-height: 250px;
   }
+}
+
+/* 입찰 금액 증가 버튼 */
+.product-detail-info button:first-of-type {
+  background: #e9eaec;
+  color: #222;
+  border: 1px solid #d5d7db;
+}
+
+.product-detail-info button:first-of-type:hover:not(:disabled) {
+  background: #dfe1e5;
 }
