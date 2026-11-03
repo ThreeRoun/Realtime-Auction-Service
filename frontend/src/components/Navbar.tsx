@@ -9,7 +9,7 @@ function hasValidToken() {
     return false;
   }
 
-  const expirationTime = Date.parse(expiresAt);
+  const expirationTime = Date.parse(expiresAt + "Z");
 
   if (!Number.isFinite(expirationTime) || Date.now() >= expirationTime) {
     localStorage.removeItem("accessToken");
@@ -48,7 +48,7 @@ function Navbar() {
     }
 
     const expiresAt = localStorage.getItem("expiresAt");
-    const expirationTime = Date.parse(expiresAt ?? "");
+    const expirationTime = Date.parse(expiresAt ? expiresAt + "Z" : "");
     const remainingTime = expirationTime - Date.now();
 
     if (!Number.isFinite(remainingTime) || remainingTime <= 0) {
