@@ -4,12 +4,59 @@
 const { WebSocketServer, WebSocket } = require('ws');
 const Redis = require('ioredis');
 
+const pino = require('pino');
+
+// JSON 형식 로거.
+// 로그를 한 줄에 하나의 JSON으로 출력해서, Loki(Grafana)가 필드별로 검색 및 집계할 수 있게 한다. 
+const logger = pino({
+  // 출력할 최소 로그 레벨. 환경변수로 변경 가능하게 구현
+  // 로그 레벨: trace < debug < info < warn < error < fatal 순서이고, info면 dedug 출력 x.
+  level: process.env.LOG_LEVEL || 'info',
+
+  // 모든 로그에 자동으로 붙는 필드.
+  // 여러 서비스 로그가 섞이어도 어느 서비스 로그인지 알 수 있다. 
+  base: { service: 'realtime-relay'},
+
+  timestamp: pino.stdTimeFunctions.isoTime, // ISO 형식으로 시간 남김
+
+  formatters: {
+    // pino는 기본으로 레벨을 숫자(info=30, warn=40)로 남김
+    // 문자열("info", "warn")로 바꿔야 Grafana가 로그 레벨을 자동으로 인식해서 색을 구분해줌. 
+    level: (label) => ({ level: label }),
+  },
+});
+
+// 모든 로그는 console.log() 대신 logger.레벨({ event: '로그 종류', ...추가 정보}, '사람이 읽을 메시지'); 로 변경
+// 첫 번째 인자(객체): 그라파나에서 검색 및 집계에 쓸 필드. 특히 event 필드가 핵심으로, 어떤 이벤트인지 구분하는 용도로 쓰임.
+// 두 번째 인자(문자열): 사람이 읽을 메시지. msg 필드로 들어감. 
+
+
 const PORT = process.env.PORT || 4000;
 const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
 const REDIS_PORT = Number(process.env.REDIS_PORT) || 6379;
 // wss: WebSocket Server (4000번 포트의 서버 전체 관리자)
 const wss = new WebSocketServer({ port : PORT });
-console.log(`[중계 엔진] WebSocket 서버 포트: ${PORT}`);
+// 포트가 실제로 열린 뒤에 "시작" 로그를 남긴다.
+// (서버 객체를 만든 직후에 남기면, 포트 열기에 실패해도 시작 로그가 찍히는 문제가 있음)
+wss.on('listening', () => {
+  logger.info({ event: 'server_start', port: Number(PORT) }, '중계 서버 시작');
+});
+
+// 서버 자체의 에러 처리.
+// 이 핸들러가 없으면 포트 충돌 시 긴 스택 트레이스와 함께 프로세스가 죽는다.
+wss.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    // fatal: 서버가 더 이상 동작할 수 없는 치명적 오류 레벨
+    logger.fatal(
+      { event: 'server_error', reason: 'port_in_use', port: Number(PORT) },
+      `${PORT}번 포트가 이미 사용 중입니다. 실행 중인 relay(컨테이너 포함)를 종료한 뒤 다시 실행하세요.`
+    );
+  } else {
+    logger.fatal({ event: 'server_error', err: err.message }, '중계 서버 오류');
+  }
+  // 정상 동작할 수 없으므로 실패 코드(1)로 종료한다.
+  process.exit(1);
+});
 
 const redisSubscriber = new Redis({
   host: REDIS_HOST,
@@ -24,11 +71,13 @@ const redisSubscriber = new Redis({
 
 // Redis 연결 성공 여부 로그
 redisSubscriber.on('connect', () => {
-  console.log(`✅ [Redis] TCP 소켓 연결 성공 (${REDIS_HOST}:${REDIS_PORT})`);
+  // 어느 Redis에 붙었는지 남겨 두면, 연결 문제가 생겼을 때 원인을 찾기 쉽다.
+  logger.info({ event: 'redis_connect', host: REDIS_HOST, port: REDIS_PORT }, 'Redis 연결 성공');
 });
 
 redisSubscriber.on('error', (err) => {
-  console.error('❌ [Redis 연결 오류]:', err.message);
+  // err 객체 전체 대신 메시지만 남겨서 로그를 짧게 유지한다.
+  logger.error({ event: 'redis_error', err: err.message }, 'Redis 연결 오류');
 });
 
 // key가 productId이고, value가 참가자 set인 map
@@ -73,10 +122,10 @@ function toLobbyPayload(eventData, productId) {
 
 /* auction_events 채널 구독 */
 redisSubscriber.subscribe('auction_events', (err,count) => {
-  if(err){
-    console.error(`❌ [Redis 구독 실패]:`, err.message);
-  } else{
-    console.log(`✅ [Redis] 'auction_events' 채널 구독 완료! (현재 구독 채널 수: ${count})`);
+  if (err) {
+    logger.error({ event: 'redis_subscribe_error', channel: 'auction_events', err: err.message }, 'Redis 구독 실패');
+  } else {
+    logger.info({ event: 'redis_subscribe', channel: 'auction_events', count }, 'Redis 채널 구독 완료');
   }
 });
 
@@ -95,7 +144,9 @@ redisSubscriber.on('message', (channel, rawString) => {
     const pId = eventData.productId || eventData.product_id;
 
     if(!pId){
-      console.warn('[중계 경고] 페이로드에 productId가 누락되었습니다.');
+      // reason 필드로 "왜" 문제인지 남기면, 나중에 원인별로 집계할 수 있다.
+      // auction_event로 어떤 종류의 이벤트에서 빠졌는지도 함께 남긴다.
+      logger.warn({ event: 'event_invalid', reason: 'missing_product_id', auction_event: eventData.event }, '상품 ID가 없는 이벤트');
       return;
     }
 
@@ -104,28 +155,33 @@ redisSubscriber.on('message', (channel, rawString) => {
     // 2) 로비(상품 목록 화면)에는 필요한 필드만 추려서 전송
     const lobbySent = broadcast(LOBBY, toLobbyPayload(eventData, pId));
 
-    if (sent === 0 && lobbySent === 0) {
-      console.log(`\n ⚠️ [중계 패스] ${pId}번 방과 로비 모두 접속자가 없습니다.`);
-    } else {
-      console.log(`\n📢 [중계] ${pId}번 방 (${sent}명), 로비 (${lobbySent}명)에게 데이터 살포`);
-    }
-  } catch (err) {
-    console.error(`❌ [메시지 파싱 에러]:`, err.message);
+    // 접속자가 없어도 같은 event('broadcast')로 남긴다.
+    // 이렇게 해야 "총 몇 번 중계했나"를 한 번에 셀 수 있다.
+    // (예전처럼 상황마다 다른 문장을 쓰면, 집계할 때 두 종류를 따로 찾아야 함)
+    logger.info(
+      {
+        event: 'broadcast',
+        auction_event: eventData.event,   // 어떤 경매 이벤트였나 (bid_placed 등)
+        product_id: String(pId),          // 어느 상품이었나
+        sent,                             // 상품 방에 보낸 인원
+        lobby_sent: lobbySent,            // 로비에 보낸 인원
+      },
+      // 메시지만 상황에 따라 다르게 해서 사람이 볼 때 구분되게 한다.
+      sent === 0 && lobbySent === 0 ? '이벤트 중계 (접속자 없음)' : '이벤트 중계'
+    );
+    } catch (err) {
+    logger.error({ event: 'event_parse_error', err: err.message }, '이벤트 파싱 실패');
   }
 });
-
-console.log(`========================================`);
-console.log(`[중계 엔진] 포트 ${PORT}에서 대기 중...`);
-console.log(`========================================`);
 
 // Ping-Pong heartbeat: 30초마다 무응답 클라이언트 감지 및 정리
 const interval = setInterval(() => {
   // 서버 전체 클라이언트를 주기적으로 훓으면서
   wss.clients.forEach((ws) => {
     // 30초 전 ping을 보냈음에도 pong 응답이 없었던 경우, 좀비 소켓으로 판정.
-    if(ws.isAlive === false){
-      console.log('[좀비 커넥션 감지] 무응답 소켓 강제 종료');
-      return ws.terminate(); // 소켓을 서버 로컬에서 파기하고 close 이벤트 유발.
+    if (ws.isAlive === false) {
+      logger.warn({ event: 'heartbeat_terminate' }, '무응답 소켓 강제 종료');
+      return ws.terminate();
     }
     // 살아있는 소켓에는 다음 주기 검사를 위해 false로 마킹하고 ping을 발송.
     ws.isAlive = false;
@@ -168,11 +224,16 @@ wss.on('connection', (ws, req)=>{
     roomKey = productId.trim();
   } else {
     // 둘 다 없으면 잘못된 접근이므로 연결을 끊는다.
+    logger.warn({ event: 'connect_rejected', reason: 'missing_room_param' }, '방 정보 없는 접속 차단');
     ws.close(1008, 'productId 또는 scope=lobby 파라미터가 필요합니다.');
     return;
   }
 
-  const roomLabel = roomKey === LOBBY ? '로비' : roomKey;
+  // 로그에 남길 방 정보.
+  // 로비의 내부 key('__lobby__')는 로그에서 보기 불편해서 'lobby'로 바꿔 표시한다.
+  // room_type은 "상품 방인지 로비인지"를 나눠서 집계할 때 쓴다.
+  const roomType = roomKey === LOBBY ? 'lobby' : 'product';
+  const roomLabel = roomKey === LOBBY ? 'lobby' : roomKey;
 
   // rooms에서 해당 방이 없었다면 새로 만든다.
   if(!rooms.has(roomKey)){
@@ -180,7 +241,7 @@ wss.on('connection', (ws, req)=>{
   }
   // 방의 소켓 모음 Set에 새로운 소켓(손님)을 추가한다.
   rooms.get(roomKey).add(ws);
-  console.log(`[클라이언트 접속] 방: ${roomLabel} (현재 인원: ${rooms.get(roomKey).size}명)`);
+  logger.info({event: 'connect', room: roomLabel, room_type: roomType, members: rooms.get(roomKey).size}, '클라이언트 접속');
   // 손님에게 환영 메세지를 보낸다.
   ws.send(JSON.stringify({
     event: 'connected',
@@ -196,25 +257,25 @@ wss.on('connection', (ws, req)=>{
     if(room){
       // Set에서 방금 나간 손님의 소켓 ws를 뺀다.
       room.delete(ws);
-      console.log(`[클라이언트 연결 해제] 방: ${roomLabel} (남은 인원: ${room.size}명)`);
+      logger.info({event: 'disconnect', room: roomLabel, room_type: roomType, members: room.size}, '클라이언트 연결 해제');
 
       // 뺀 이후에 방에 남은 손님의 수가 0이면 방 자체를 Map에서 삭제한다.
       if(room.size===0){
         rooms.delete(roomKey);
-        console.log(`[방 삭제] 인원이 없어 방 ${roomLabel}을(를) 정리합니다.`);
+        logger.info({event: 'room_delete', room: roomLabel, room_type: roomType}, '빈 방 정리');
       }
     }
   });
 
   // 소켓 에러로 서버가 꺼지는 것을 방지하기 위한 안전장치.
   ws.on('error', (err) => {
-    console.error(`[소켓 에러]:`, err.message);
+    logger.error({event: 'socket_error', room: roomLabel, room_type: roomType, err: err.message }, `소켓 에러`);
   });
 });
 
 // 컨테이너 종료 시 안전한 연결 회수
 const gracefulShutdown = () => {
-  console.log('\n🛑 중계 서버 종료 신호 감지, 리소스를 정리합니다...');
+  logger.info({event: 'shutdown_start'}, '종료 신호 감지, 리소스 정리 시작');
   clearInterval(interval);
 
   wss.clients.forEach((client)=>{
@@ -222,9 +283,9 @@ const gracefulShutdown = () => {
   });
 
   wss.close(()=>{
-    console.log('✅ WebSocket 서버 닫힘');
+    logger.info({event: 'shutdown_ws_closed'}, 'WebSocket 서버 닫힘');
     redisSubscriber.quit().then(()=>{
-      console.log('✅ Redis 연결 정상 종료');
+      logger.info({event: 'shutdown_complete'}, 'Redis 연결 정상 종료, 서버 종료');
       process.exit(0);
     });
   });

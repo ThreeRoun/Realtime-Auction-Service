@@ -9,6 +9,7 @@
 - **Runtime:** Node.js (v20+)
 - **WebSocket:** `ws` (RFC 6455 표준 순수 WebSocket)
 - **Pub/Sub Client:** `ioredis`
+- **Logging:** `pino` (JSON 로그, Loki·Grafana에서 검색·집계)
 
 ---
 
@@ -113,6 +114,7 @@
 | `PORT` | `4000` | WebSocket 서버 포트 |
 | `REDIS_HOST` | `localhost` | Redis 호스트 (컨테이너 환경에서는 compose가 `auction-redis`로 지정) |
 | `REDIS_PORT` | `6379` | Redis 포트 |
+| `LOG_LEVEL` | `info` | 로그 레벨 (`debug`, `info`, `warn`, `error`) |
 
 ### 실행 방법
 
@@ -121,13 +123,14 @@
 docker compose up -d redis
 
 # 2. 의존성 설치
-cd realtime-relay && npm install
+cd realtime-relay && npm ci
 
-# 3. 서버 구동
-node server.js
+# 3. 서버 구동 (로그를 사람이 읽기 쉬운 형태로 출력)
+npm run dev
 ```
 
-`✅ [Redis] 'auction_events' 채널 구독 완료!` 로그가 보이면 정상입니다.
+`Redis 채널 구독 완료` 로그가 보이면 정상입니다.
+`node server.js`(또는 `npm start`)로 실행하면 로그가 JSON 한 줄씩 그대로 출력되며, 컨테이너에서는 이 형식으로 실행됩니다.
 
 ### 단독 동작 확인
 
@@ -140,11 +143,48 @@ docker exec -it auction-redis redis-cli PUBLISH auction_events \
   '{"event":"bid_placed","product_id":"test-room","current_price":55000,"bidder_id":"tester","bid_at":"2026-10-07T12:00:00"}'
 ```
 
+### 로그 형식
+
+로그는 한 줄에 하나의 JSON으로 출력되며, `event` 필드로 로그 종류를 구분합니다.
+
+```json
+{"level":"info","time":"2026-11-07T01:54:04.254Z","service":"realtime-relay","event":"broadcast","auction_event":"bid_placed","product_id":"product-A","sent":2,"lobby_sent":1,"msg":"이벤트 중계"}
+```
+
+| `event` | 레벨 | 주요 필드 | 의미 |
+| --- | --- | --- | --- |
+| `server_start` | info | `port` | 포트가 열리고 서버 시작 |
+| `server_error` | fatal | `reason`, `port`, `err` | 서버 시작 실패 (예: 포트 충돌) 후 종료 |
+| `redis_connect` / `redis_subscribe` | info | `host`, `channel` | Redis 연결·구독 완료 |
+| `redis_error` / `redis_subscribe_error` | error | `err` | Redis 연결·구독 실패 |
+| `connect` / `disconnect` | info | `room`, `room_type`, `members` | 클라이언트 접속·해제 (`members`는 처리 후 방 인원) |
+| `connect_rejected` | warn | `reason` | 방 정보 없는 접속 차단 (1008) |
+| `room_delete` | info | `room`, `room_type` | 빈 방 정리 |
+| `broadcast` | info | `auction_event`, `product_id`, `sent`, `lobby_sent` | 이벤트 중계 (접속자가 없어도 0으로 기록) |
+| `event_invalid` | warn | `reason`, `auction_event` | 상품 ID가 없는 이벤트 |
+| `event_parse_error` | error | `err` | JSON이 아닌 이벤트 |
+| `heartbeat_terminate` | warn | - | 응답 없는 소켓 강제 종료 |
+| `socket_error` | warn | `room`, `err` | 개별 소켓 에러 |
+| `shutdown_start` / `shutdown_ws_closed` / `shutdown_complete` | info | - | 정상 종료 과정 |
+
+Grafana(Loki)에서는 `| json`으로 필드를 꺼내 집계할 수 있습니다.
+
+```logql
+# 분당 이벤트 중계 횟수
+sum(count_over_time({service="realtime-relay"} | json | event="broadcast" [1m]))
+
+# 분당 상품 방 전달 인원 합계
+sum(sum_over_time({service="realtime-relay"} | json | event="broadcast" | unwrap sent [1m]))
+
+# 이벤트 종류별 횟수
+sum by (event) (count_over_time({service="realtime-relay"} | json [5m]))
+```
+
 ### ⚠️ Troubleshooting
 
 - **PUBLISH 결과가 `(integer) 0`이고 이벤트가 오지 않음**
   Mac에 Homebrew 등으로 설치한 Redis가 켜져 있으면, `localhost:6379` 연결이 도커 Redis가 아닌 로컬 Redis로 갑니다. `lsof -nP -iTCP:6379 -sTCP:LISTEN`으로 `redis-server`가 보이면 `brew services stop redis`로 끈 뒤 relay(와 엔진)를 재시작하세요.
 - **`❌ [Redis 연결 오류]`가 반복됨**
   Redis 컨테이너가 실행 중인지 확인하세요(`docker compose up -d redis`). 다른 호스트의 Redis를 쓰려면 `REDIS_HOST`로 지정하세요.
-- **`EADDRINUSE` (포트 사용 중)**
+- **`4000번 포트가 이미 사용 중입니다` (FATAL)**
   `docker compose up`으로 띄운 `realtime-relay` 컨테이너가 4000 포트를 쓰고 있을 수 있습니다. `docker compose stop realtime-relay` 후 다시 실행하세요.
