@@ -1,0 +1,15 @@
+# 학교 서버 배포용. 이미지 태그는 CI에서 커밋 SHA로 바꿔 넣는다:
+#   kustomize edit set image ghcr.io/threeroun/auction-engine=ghcr.io/threeroun/auction-engine:<sha>
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+images:
+  - name: ghcr.io/threeroun/auction-engine
+    newTag: baseline-latest
+  - name: ghcr.io/threeroun/realtime-relay
+    newTag: baseline-latest
+  - name: ghcr.io/threeroun/frontend
+    newTag: baseline-latest

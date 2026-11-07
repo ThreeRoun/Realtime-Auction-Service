@@ -1,0 +1,97 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: auction-engine
+spec:
+  selector:
+    app: auction-engine
+  ports:
+    - port: 8080
+---
+# 상품 이미지를 로컬 디스크에 저장하는 구조라 ReadWriteOnce PVC를 붙인다.
+# 여러 노드/여러 replica로 늘리려면 이미지 저장소를 공유 스토리지로 옮겨야 한다.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: product-images
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auction-engine
+spec:
+  # 스케줄러 중복 실행 / 이미지 로컬 저장 문제가 해결되기 전까지는 1개로 운영
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: auction-engine
+  template:
+    metadata:
+      labels:
+        app: auction-engine
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: auction-engine
+          image: ghcr.io/threeroun/auction-engine
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: auction-engine-config
+          env:
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: auction-secret
+                  key: POSTGRES_USER
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: auction-secret
+                  key: POSTGRES_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: auction-secret
+                  key: JWT_SECRET
+          # Actuator 도입 전까지는 포트 오픈 여부로 판단한다.
+          # (Tomcat은 Flyway 마이그레이션 등 컨텍스트 초기화가 끝난 뒤에 포트를 연다)
+          startupProbe:
+            tcpSocket:
+              port: 8080
+            periodSeconds: 5
+            failureThreshold: 36
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 8080
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              memory: 1Gi
+          volumeMounts:
+            - name: product-images
+              mountPath: /data/product-images
+      volumes:
+        - name: product-images
+          persistentVolumeClaim:
+            claimName: product-images

@@ -1,0 +1,20 @@
+# 비밀이 아닌 설정값. 비밀번호/JWT 키는 auction-secret(Secret)에 따로 둔다 - k8s/README.md 참고
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: auction-engine-config
+data:
+  SPRING_DATASOURCE_URL: jdbc:postgresql://auction-db:5432/auction
+  SPRING_DATA_REDIS_HOST: auction-redis
+  PRODUCT_IMAGE_DIR: /data/product-images
+  # 컨테이너 메모리 limit 기준으로 힙 크기를 잡는다 (JVM 기본값 25%는 너무 작음)
+  JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: realtime-relay-config
+data:
+  REDIS_HOST: auction-redis
+  REDIS_PORT: "6379"
+  PORT: "4000"
