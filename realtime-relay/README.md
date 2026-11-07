@@ -179,6 +179,7 @@ sum(sum_over_time({service="realtime-relay"} | json | __error__="" | event="broa
 # 이벤트 종류별 횟수
 sum by (event) (count_over_time({service="realtime-relay"} | json | __error__="" [5m]))
 ```
+
 `| __error__=""`는 JSON이 아닌 로그 줄(이전 형식 로그, 비정상 종료 시 출력 등)을 집계에서 제외합니다.
 
 ### ⚠️ Troubleshooting
