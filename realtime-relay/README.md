@@ -171,14 +171,15 @@ Grafana(Loki)에서는 `| json`으로 필드를 꺼내 집계할 수 있습니�
 
 ```logql
 # 분당 이벤트 중계 횟수
-sum(count_over_time({service="realtime-relay"} | json | event="broadcast" [1m]))
+sum(count_over_time({service="realtime-relay"} | json | __error__="" | event="broadcast" [1m]))
 
 # 분당 상품 방 전달 인원 합계
-sum(sum_over_time({service="realtime-relay"} | json | event="broadcast" | unwrap sent [1m]))
+sum(sum_over_time({service="realtime-relay"} | json | __error__="" | event="broadcast" | unwrap sent [1m]))
 
 # 이벤트 종류별 횟수
-sum by (event) (count_over_time({service="realtime-relay"} | json [5m]))
+sum by (event) (count_over_time({service="realtime-relay"} | json | __error__="" [5m]))
 ```
+`| __error__=""`는 JSON이 아닌 로그 줄(이전 형식 로그, 비정상 종료 시 출력 등)을 집계에서 제외합니다.
 
 ### ⚠️ Troubleshooting
 
