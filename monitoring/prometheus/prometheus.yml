@@ -1,0 +1,9 @@
+# auction-engine이 노출하는 /actuator/prometheus를 15초마다 긁어간다(scrape).
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: auction-engine
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["auction-engine:8080"]
