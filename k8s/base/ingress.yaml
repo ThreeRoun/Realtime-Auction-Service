@@ -1,0 +1,17 @@
+# 외부 진입점은 frontend(nginx) 하나만 둔다. /api, /images, /ws 분기는 기존 nginx.conf가 담당.
+# ingressClassName을 비워 두면 클러스터 기본 IngressClass(k3s는 Traefik)를 사용한다.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: auction
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 80

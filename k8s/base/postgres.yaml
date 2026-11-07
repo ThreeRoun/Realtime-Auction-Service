@@ -1,0 +1,74 @@
+# Service 이름을 compose와 같은 auction-db로 맞춰 SPRING_DATASOURCE_URL을 그대로 쓴다
+apiVersion: v1
+kind: Service
+metadata:
+  name: auction-db
+spec:
+  clusterIP: None
+  selector:
+    app: auction-db
+  ports:
+    - port: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: auction-db
+spec:
+  serviceName: auction-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auction-db
+  template:
+    metadata:
+      labels:
+        app: auction-db
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: auction
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: auction-secret
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: auction-secret
+                  key: POSTGRES_PASSWORD
+            # 볼륨 루트에 lost+found가 생기는 스토리지에서도 initdb가 실패하지 않도록 하위 디렉터리 사용
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d auction"]
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d auction"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+          volumeMounts:
+            - name: db-data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: db-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi
