@@ -1,0 +1,45 @@
+// Grafana Alloy 설정: Docker 컨테이너 로그를 수집해 Loki로 보낸다.
+// (Promtail은 2026-03-02 지원 종료되어 후속 수집기인 Alloy를 사용한다)
+
+// 1) Docker 소켓으로 실행 중인 컨테이너 목록을 찾는다.
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+// 2) Loki에서 검색할 때 쓸 라벨을 붙인다.
+//    service: compose 서비스 이름 (auction-engine, realtime-relay, frontend, db, redis ...)
+//    container: 컨테이너 이름
+discovery.relabel "containers" {
+  targets = discovery.docker.containers.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    target_label  = "project"
+  }
+}
+
+// 3) 컨테이너의 표준 출력 로그를 읽어 Loki로 전달한다.
+loki.source.docker "containers" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.docker.containers.targets
+  relabel_rules = discovery.relabel.containers.rules
+  forward_to    = [loki.write.local.receiver]
+}
+
+// 4) Loki로 전송
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
