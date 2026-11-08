@@ -1,0 +1,10 @@
+# Grafana 시작 시 Prometheus 데이터 소스를 자동으로 등록한다.
+# (Loki 데이터 소스는 logging/grafana/provisioning/datasources/loki.yml, PR #95 참고 - 같은
+#  폴더에 파일만 나란히 추가하는 거라 두 PR이 어느 순서로 머지돼도 충돌 없음)
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
