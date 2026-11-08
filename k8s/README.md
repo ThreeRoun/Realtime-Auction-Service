@@ -36,6 +36,17 @@ sudo kubectl get nodes
 
 k3s에는 Traefik(Ingress Controller)과 local-path(기본 StorageClass)가 포함되어 있어 별도 설치가 필요 없다.
 
+`/etc/rancher/k3s/k3s.yaml`은 root만 읽을 수 있으므로, kubectl을 쓸 계정(본인, self-hosted runner 계정)마다 복사해 둔다.
+클러스터 관리자 권한이 담긴 파일이라 `--write-kubeconfig-mode 644`로 모두에게 여는 방식은 쓰지 않는다.
+
+```bash
+mkdir -p ~/.kube
+sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+sudo chown "$(id -u):$(id -g)" ~/.kube/config
+chmod 600 ~/.kube/config
+kubectl get nodes
+```
+
 ### 2. 네임스페이스와 Secret 생성
 
 Secret은 저장소에 커밋하지 않고 서버에서 직접 만든다.
@@ -60,20 +71,42 @@ kubectl -n auction create secret docker-registry ghcr-secret \
 
 ## 배포
 
+### 자동 배포 (CI)
+
+`baseline` 브랜치에 머지되면 `.github/workflows/deploy-baseline.yml`이 다음 순서로 배포한다.
+
+1. 3개 서비스 이미지를 빌드해 GHCR에 `<커밋 SHA>`, `baseline-latest` 태그로 push
+2. 서버의 self-hosted runner가 배포 직전 이미지를 기록한 뒤, 이미지 태그를 커밋 SHA로 바꿔 `kubectl apply`
+3. `rollout status`로 3개 Deployment 롤아웃 완료 대기 (최대 5분)
+4. `http://localhost/`, `http://localhost/api/products` 스모크 테스트 (Ingress 경유)
+5. 2~4 중 하나라도 실패하면 **배포 직전 이미지로 자동 롤백**
+
+롤링 업데이트가 `maxUnavailable: 0`이라 새 Pod가 준비되지 않으면 기존 Pod가 계속 요청을 받는다.
+실행 결과와 배포된 이미지는 Actions 실행 화면의 Summary에서 확인할 수 있다.
+
+### 수동 배포
+
 ```bash
 kubectl apply -k k8s/overlays/prod
 kubectl -n auction get pods
 ```
 
-특정 커밋 버전으로 배포하려면 이미지 태그를 바꾼 뒤 적용한다.
+특정 커밋 버전으로 배포하려면 prod overlay를 감싸는 임시 overlay로 이미지 태그만 바꿔서 적용한다 (CI와 같은 방식, `kustomize` 바이너리 불필요).
 
 ```bash
-cd k8s/overlays/prod
-kustomize edit set image \
-  ghcr.io/threeroun/auction-engine=ghcr.io/threeroun/auction-engine:<커밋 SHA> \
-  ghcr.io/threeroun/realtime-relay=ghcr.io/threeroun/realtime-relay:<커밋 SHA> \
-  ghcr.io/threeroun/frontend=ghcr.io/threeroun/frontend:<커밋 SHA>
-kubectl apply -k .
+SHA=<커밋 SHA>
+mkdir -p .deploy && cat > .deploy/kustomization.yaml <<EOF
+resources:
+  - ../k8s/overlays/prod
+images:
+  - name: ghcr.io/threeroun/auction-engine
+    newTag: "$SHA"
+  - name: ghcr.io/threeroun/realtime-relay
+    newTag: "$SHA"
+  - name: ghcr.io/threeroun/frontend
+    newTag: "$SHA"
+EOF
+kubectl apply -k .deploy && rm -r .deploy
 ```
 
 ## 자주 쓰는 명령
@@ -94,6 +127,5 @@ kubectl -n auction rollout restart deploy/auction-engine
 ## 현재 제약
 
 - **auction-engine은 replica 1개로 고정**: 상품 이미지를 로컬 디스크(ReadWriteOnce PVC)에 저장하고, `@Scheduled` 작업이 모든 Pod에서 실행되기 때문.
-- **헬스체크는 TCP 포트 확인 수준**: auction-engine에 Actuator가 없고, realtime-relay는 HTTP 요청에 426만 돌려준다.
+- **헬스체크는 TCP 포트 확인 수준**: auction-engine은 Actuator가 추가되어 httpGet probe로 전환할 수 있고(#99), realtime-relay는 HTTP 헬스 엔드포인트가 필요하다(#103).
 - **compose 배포와 동시 운영 금지**: 같은 서버에서 compose와 k3s를 함께 띄우면 DB가 두 벌이 된다. 전환 시 기존 compose DB를 `pg_dump`로 옮긴 뒤 compose를 내린다.
-- CI 배포(`deploy-baseline.yml`)는 아직 compose 방식이다. 서버에 k3s를 설치한 뒤 `kubectl apply -k` 방식으로 전환한다.

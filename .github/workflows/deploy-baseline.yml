@@ -2,9 +2,10 @@ name: Deploy to school server (baseline)
 
 # baseline 브랜치에 PR이 머지(=push)되면:
 #   1) 3개 서비스 이미지를 빌드해 GHCR에 태그(커밋 SHA + baseline-latest)로 push
-#   2) 학교 VDI에 설치된 self-hosted runner가 docker-compose.prod.yml로 배포
+#   2) 학교 VDI에 설치된 self-hosted runner가 k3s 클러스터에 커밋 SHA 이미지로 배포
 #      (학교 방화벽이 외부 인바운드 SSH를 막으므로 서버에서 GitHub로 나가는 연결만 사용)
-#   3) 서버 내부에서 localhost로 헬스체크 (포트 외부 공개 불필요)
+#   3) 롤아웃 완료 + 서버 내부 localhost(Ingress)로 스모크 테스트
+#   4) 2~3 중 하나라도 실패하면 배포 직전 이미지로 자동 롤백
 
 on:
   push:
@@ -14,10 +15,17 @@ permissions:
   contents: read
   packages: write   # GHCR push에 필요
 
+# 연달아 머지돼도 배포가 겹치지 않게 순서대로 실행 (진행 중인 배포는 취소하지 않음)
+concurrency:
+  group: deploy-baseline
+  cancel-in-progress: false
+
 env:
   IMAGE_TAG: ${{ github.sha }}
   # GHCR 이미지 경로는 소문자여야 함
   IMAGE_REGISTRY: ghcr.io/threeroun
+  NAMESPACE: auction
+  APPS: auction-engine realtime-relay frontend
 
 jobs:
   build-and-push:
@@ -49,29 +57,55 @@ jobs:
     needs: build-and-push
     runs-on: [self-hosted, school-server]
     steps:
-      # GHCR 패키지가 private일 수 있으므로 GITHUB_TOKEN으로 로그인 (job 종료 시 자동 로그아웃)
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Deploy with docker compose
-        working-directory: ${{ secrets.DEPLOY_PATH }}
+      # runner 계정의 kubeconfig(~/.kube/config)로 클러스터에 접근 가능한지 먼저 확인
+      - name: Check cluster access
         run: |
           set -eu
-          git fetch origin baseline
-          git reset --hard origin/baseline
-          docker compose -f docker-compose.prod.yml pull
-          docker compose -f docker-compose.prod.yml up -d
-          docker image prune -f
+          kubectl get namespace "$NAMESPACE" > /dev/null
+          kubectl -n "$NAMESPACE" get secret auction-secret ghcr-secret > /dev/null
 
-  health-check:
-    needs: deploy
-    runs-on: [self-hosted, school-server]
-    steps:
-      - name: Verify frontend and product API on server
+      # 롤백 기준점: 배포 직전에 돌고 있던 이미지 (rollout undo는 apply가 적용 전에 실패해도
+      # 한 단계 더 이전 버전으로 되돌려 버리므로, 실제로 돌던 이미지를 기록해 두고 그걸로 되돌린다)
+      - name: Record current images
+        run: |
+          set -eu
+          for app in $APPS; do
+            img=$(kubectl -n "$NAMESPACE" get deploy "$app" \
+              -o jsonpath="{.spec.template.spec.containers[?(@.name=='$app')].image}")
+            echo "$app=$img" | tee -a "$RUNNER_TEMP/previous-images"
+          done
+
+      # prod overlay를 감싸는 임시 overlay로 이미지 태그만 커밋 SHA로 바꿔서 적용
+      # (저장소 파일은 수정하지 않고, 서버에 kustomize 바이너리도 필요 없음)
+      - name: Apply manifests (${{ env.IMAGE_TAG }})
+        run: |
+          set -eu
+          mkdir -p .deploy
+          {
+            echo "apiVersion: kustomize.config.k8s.io/v1beta1"
+            echo "kind: Kustomization"
+            echo "resources:"
+            echo "  - ../k8s/overlays/prod"
+            echo "images:"
+            for app in $APPS; do
+              echo "  - name: $IMAGE_REGISTRY/$app"
+              echo "    newTag: \"$IMAGE_TAG\""
+            done
+          } > .deploy/kustomization.yaml
+          kubectl apply -k .deploy
+
+      - name: Wait for rollout
+        run: |
+          set -eu
+          for app in $APPS; do
+            kubectl -n "$NAMESPACE" rollout status deploy/"$app" --timeout=300s
+          done
+
+      # Ingress(Traefik, 80 포트)를 거쳐 frontend → auction-engine 경로까지 확인
+      - name: Smoke test
         run: |
           set -eu
           for path in / /api/products; do
@@ -82,5 +116,44 @@ jobs:
               --retry-delay 5 \
               --retry-connrefused \
               --output /dev/null \
-              "http://localhost:3000${path}"
+              "http://localhost${path}"
           done
+
+      - name: Roll back to previous images
+        if: failure()
+        run: |
+          set -u
+          echo "::error::배포 실패 - 배포 직전 이미지로 롤백합니다"
+          if [ ! -s "$RUNNER_TEMP/previous-images" ]; then
+            echo "::error::기록된 이전 이미지가 없어 자동 롤백을 건너뜁니다. 수동 확인이 필요합니다"
+            exit 1
+          fi
+          kubectl -n "$NAMESPACE" get pods
+          status=0
+          # 목록은 fd 3으로 읽는다 (루프 안의 명령이 stdin을 소비해 다음 줄을 건너뛰는 것을 방지)
+          while IFS='=' read -r app img <&3; do
+            echo "$app -> $img"
+            kubectl -n "$NAMESPACE" set image deploy/"$app" "$app=$img" || status=1
+          done 3< "$RUNNER_TEMP/previous-images"
+          for app in $APPS; do
+            kubectl -n "$NAMESPACE" rollout status deploy/"$app" --timeout=300s || status=1
+          done
+          if [ "$status" -ne 0 ]; then
+            echo "::error::롤백도 실패했습니다. 서버에서 kubectl -n $NAMESPACE get pods 로 확인하세요"
+          fi
+          exit "$status"
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          {
+            echo "### 배포 결과: ${{ job.status }}"
+            echo
+            echo "| 서비스 | 현재 이미지 |"
+            echo "|---|---|"
+            for app in $APPS; do
+              img=$(kubectl -n "$NAMESPACE" get deploy "$app" \
+                -o jsonpath="{.spec.template.spec.containers[?(@.name=='$app')].image}" 2>/dev/null || echo "-")
+              echo "| $app | \`$img\` |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"

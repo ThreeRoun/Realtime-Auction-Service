@@ -18,3 +18,5 @@ Thumbs.db
 # Frontend
 frontend/node_modules/
 frontend/dist/
+# k8s 배포 시 생성되는 임시 overlay (deploy-baseline.yml, k8s/README.md 참고)
+.deploy/
