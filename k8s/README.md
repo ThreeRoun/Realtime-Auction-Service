@@ -127,5 +127,5 @@ kubectl -n auction rollout restart deploy/auction-engine
 ## 현재 제약
 
 - **auction-engine은 replica 1개로 고정**: 상품 이미지를 로컬 디스크(ReadWriteOnce PVC)에 저장하고, `@Scheduled` 작업이 모든 Pod에서 실행되기 때문.
-- **헬스체크는 TCP 포트 확인 수준**: auction-engine은 Actuator가 추가되어 httpGet probe로 전환할 수 있고(#99), realtime-relay는 HTTP 헬스 엔드포인트가 필요하다(#103).
+- **realtime-relay 헬스체크는 TCP 포트 확인 수준**: HTTP 헬스 엔드포인트가 필요하다(#103). auction-engine은 Actuator probe(`/actuator/health/liveness`, `/actuator/health/readiness`)를 쓴다.
 - **compose 배포와 동시 운영 금지**: 같은 서버에서 compose와 k3s를 함께 띄우면 DB가 두 벌이 된다. 전환 시 기존 compose DB를 `pg_dump`로 옮긴 뒤 compose를 내린다.

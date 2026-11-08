@@ -66,21 +66,31 @@ spec:
                 secretKeyRef:
                   name: auction-secret
                   key: JWT_SECRET
-          # Actuator 도입 전까지는 포트 오픈 여부로 판단한다.
-          # (Tomcat은 Flyway 마이그레이션 등 컨텍스트 초기화가 끝난 뒤에 포트를 연다)
+          # Spring Boot Actuator probe 그룹 (application.properties 참고)
+          # - startup/liveness: 앱 자체 상태만 확인 → 실패 시 컨테이너 재시작
+          # - readiness: DB 연결 포함 → 실패 시 Service에서 제외 (재시작하지 않음)
+          # DB가 끊기면 DB 헬스체크가 커넥션 타임아웃까지 응답을 붙잡고 있으므로,
+          # timeoutSeconds를 짧게 둬서 응답 지연도 실패로 처리한다.
           startupProbe:
-            tcpSocket:
+            httpGet:
+              path: /actuator/health/liveness
               port: 8080
             periodSeconds: 5
+            timeoutSeconds: 3
             failureThreshold: 36
           readinessProbe:
-            tcpSocket:
+            httpGet:
+              path: /actuator/health/readiness
               port: 8080
             periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
           livenessProbe:
-            tcpSocket:
+            httpGet:
+              path: /actuator/health/liveness
               port: 8080
             periodSeconds: 10
+            timeoutSeconds: 3
             failureThreshold: 3
           resources:
             requests:
