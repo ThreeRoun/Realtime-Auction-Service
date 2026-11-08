@@ -61,9 +61,18 @@ jobs:
         uses: actions/checkout@v4
 
       # runner 계정의 kubeconfig(~/.kube/config)로 클러스터에 접근 가능한지 먼저 확인
+      # k3s 내장 kubectl은 KUBECONFIG가 없으면 root 전용인 /etc/rancher/k3s/k3s.yaml을 읽는다.
+      # 서비스로 도는 runner는 ~/.bashrc를 읽지 않으므로, 이후 모든 step에 KUBECONFIG를 명시한다.
       - name: Check cluster access
         run: |
           set -eu
+          kubeconfig="${KUBECONFIG:-$HOME/.kube/config}"
+          if [ ! -r "$kubeconfig" ]; then
+            echo "::error::$(id -un) 계정에서 kubeconfig($kubeconfig)를 읽을 수 없습니다. k8s/README.md의 kubeconfig 설정을 runner 계정으로 진행하세요"
+            exit 1
+          fi
+          echo "KUBECONFIG=$kubeconfig" >> "$GITHUB_ENV"
+          export KUBECONFIG="$kubeconfig"
           kubectl get namespace "$NAMESPACE" > /dev/null
           kubectl -n "$NAMESPACE" get secret auction-secret ghcr-secret > /dev/null
 
