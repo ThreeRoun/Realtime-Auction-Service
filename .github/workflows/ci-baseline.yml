@@ -22,3 +22,16 @@ jobs:
           context: ./${{ matrix.service }}
           push: false
           tags: ${{ matrix.service }}:pr-${{ github.event.pull_request.number }}
+
+  k8s-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # kustomize 렌더링이 깨지지 않는지 + 렌더링 결과가 Kubernetes 스키마에 맞는지 검증
+      - name: Render and validate manifests
+        run: |
+          set -eu
+          kubectl kustomize k8s/overlays/prod > rendered.yaml
+          docker run --rm -i ghcr.io/yannh/kubeconform:v0.6.7 -strict -summary - < rendered.yaml
