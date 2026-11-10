@@ -47,6 +47,9 @@ null 여부로 낙찰/유찰을 구분하면 된다).
 - `auction_bid_placed_total` — 최고가를 갱신한 유효한 입찰 수
 - `auction_extended_total` — 안티 스나이핑으로 마감이 연장된 횟수
 - `auction_closed_total{result="sold"|"unsold"}` — 마감된 경매 수 (낙찰/유찰 구분)
+- `auction_bid_rejected_total{reason=...}` — 입찰이 거절된 횟수, 사유별 (PR #126 리뷰 피드백으로
+  추가). `reason`은 `product_not_found` / `auction_not_in_progress` / `self_bid_not_allowed` /
+  `cooldown_active` / `amount_too_low`(진 입찰 - 최소 입찰 단위 미달) 중 하나.
 
 ## 참고
 

@@ -51,15 +51,20 @@ public class BidService {
     // 실행되므로, 뒤에 처리되는 요청은 항상 방금 갱신된 current_price/end_at을 기준으로 재검증된다.
     @Transactional
     public BidResult placeBid(UUID productId, UUID bidderId, int amount) {
-        Product product = productRepository.findByIdForUpdate(productId)
-                .orElseThrow(() -> new ProductNotFoundException(productId));
+        Product product = productRepository.findByIdForUpdate(productId).orElse(null);
+        if (product == null) {
+            metrics.bidRejected(AuctionMetrics.BidRejectionReason.PRODUCT_NOT_FOUND);
+            throw new ProductNotFoundException(productId);
+        }
 
         if (product.getStatus() != ProductStatus.IN_PROGRESS && product.getStatus() != ProductStatus.EXTENDED) {
+            metrics.bidRejected(AuctionMetrics.BidRejectionReason.AUCTION_NOT_IN_PROGRESS);
             throw new AuctionNotInProgressException(productId, product.getStatus());
         }
 
         // 판매자가 자기 상품에 입찰해서 가격을 띄우는 자전 거래(shill bidding) 방지
         if (product.getSeller().getId().equals(bidderId)) {
+            metrics.bidRejected(AuctionMetrics.BidRejectionReason.SELF_BID_NOT_ALLOWED);
             throw new SelfBidNotAllowedException(productId);
         }
 
@@ -68,6 +73,7 @@ public class BidService {
         Optional<Bid> lastBid = bidRepository.findFirstByProductIdAndBidderIdOrderByBidAtDesc(productId, bidderId);
         LocalDateTime now = LocalDateTime.now();
         if (lastBid.isPresent() && Duration.between(lastBid.get().getBidAt(), now).compareTo(BID_COOLDOWN) < 0) {
+            metrics.bidRejected(AuctionMetrics.BidRejectionReason.COOLDOWN_ACTIVE);
             throw new BidCooldownException(productId);
         }
 
@@ -89,10 +95,12 @@ public class BidService {
                 product.incrementExtensionCount();
                 extended = true;
             }
+        } else {
+            // amount가 minNextBid 미만이면 bid는 is_valid=false인 채로 그대로 저장된다.
+            // 여기서 예외를 던지면 @Transactional이 트랜잭션 전체를 롤백시켜서, 남겨야 할
+            // "진 입찰" 기록 자체가 사라져 버리기 때문에 예외 대신 반환값(isValid)으로 성패를 알린다.
+            metrics.bidRejected(AuctionMetrics.BidRejectionReason.AMOUNT_TOO_LOW);
         }
-        // amount가 minNextBid 미만이면 bid는 is_valid=false인 채로 그대로 저장된다.
-        // 여기서 예외를 던지면 @Transactional이 트랜잭션 전체를 롤백시켜서, 남겨야 할
-        // "진 입찰" 기록 자체가 사라져 버리기 때문에 예외 대신 반환값(isValid)으로 성패를 알린다.
         Bid savedBid = bidRepository.save(bid);
 
         // 진 입찰(is_valid=false)은 프론트에 실시간으로 알릴 대상이 아니므로 발행하지 않는다.

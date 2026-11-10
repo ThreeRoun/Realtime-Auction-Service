@@ -47,4 +47,21 @@ class AuctionMetricsTest {
         assertThat(registry.get("auction.closed").tag("result", "sold").counter().count()).isEqualTo(2.0);
         assertThat(registry.get("auction.closed").tag("result", "unsold").counter().count()).isEqualTo(1.0);
     }
+
+    @Test
+    void 입찰_거절은_사유별로_서로_다른_카운터에_쌓인다() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        AuctionMetrics metrics = new AuctionMetrics(registry);
+
+        metrics.bidRejected(AuctionMetrics.BidRejectionReason.AMOUNT_TOO_LOW);
+        metrics.bidRejected(AuctionMetrics.BidRejectionReason.AMOUNT_TOO_LOW);
+        metrics.bidRejected(AuctionMetrics.BidRejectionReason.COOLDOWN_ACTIVE);
+
+        assertThat(registry.get("auction.bid.rejected").tag("reason", "amount_too_low").counter().count())
+                .isEqualTo(2.0);
+        assertThat(registry.get("auction.bid.rejected").tag("reason", "cooldown_active").counter().count())
+                .isEqualTo(1.0);
+        assertThat(registry.get("auction.bid.rejected").tag("reason", "self_bid_not_allowed").counter().count())
+                .isEqualTo(0.0);
+    }
 }
