@@ -1,0 +1,181 @@
+# 서버(node) / Kubernetes / 모니터링 자체 알람 규칙 단위 테스트
+
+rule_files:
+  - ../node.rules.yml
+  - ../kubernetes.rules.yml
+  - ../monitoring.rules.yml
+
+evaluation_interval: 15s
+
+tests:
+  # 디스크 여유 10% → Low(15% 미만) 발생, Critical(5% 미만)은 미발생 / 읽기 전용 파일시스템은 제외
+  - interval: 1m
+    input_series:
+      - series: 'node_filesystem_avail_bytes{job="node-exporter", node="n1", mountpoint="/", fstype="ext4", device="/dev/sda1"}'
+        values: "10x10"
+      - series: 'node_filesystem_size_bytes{job="node-exporter", node="n1", mountpoint="/", fstype="ext4", device="/dev/sda1"}'
+        values: "100x10"
+      - series: 'node_filesystem_readonly{job="node-exporter", node="n1", mountpoint="/", fstype="ext4", device="/dev/sda1"}'
+        values: "0x10"
+      - series: 'node_filesystem_avail_bytes{job="node-exporter", node="n1", mountpoint="/boot", fstype="ext4", device="/dev/sda2"}'
+        values: "1x10"
+      - series: 'node_filesystem_size_bytes{job="node-exporter", node="n1", mountpoint="/boot", fstype="ext4", device="/dev/sda2"}'
+        values: "100x10"
+      - series: 'node_filesystem_readonly{job="node-exporter", node="n1", mountpoint="/boot", fstype="ext4", device="/dev/sda2"}'
+        values: "1x10"
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: NodeDiskSpaceLow
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: node
+              job: node-exporter
+              node: n1
+              mountpoint: /
+              fstype: ext4
+              device: /dev/sda1
+            exp_annotations:
+              summary: "디스크 여유 10% (n1:/)"
+              description: "디스크 여유 공간이 15% 미만이다. 로그/지표 보존 기간, 상품 이미지, DB 크기를 확인한다."
+      - eval_time: 6m
+        alertname: NodeDiskSpaceCritical
+        exp_alerts: []
+
+  # CrashLoopBackOff 상태가 계속 이어짐 → 10분 후 발생
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_waiting_reason{job="kube-state-metrics", namespace="auction", pod="auction-engine-a", container="auction-engine", reason="CrashLoopBackOff"}'
+        values: "1x15"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: KubePodCrashLooping
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: KubePodCrashLooping
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: kubernetes
+              job: kube-state-metrics
+              namespace: auction
+              pod: auction-engine-a
+              container: auction-engine
+              reason: CrashLoopBackOff
+            exp_annotations:
+              summary: "auction/auction-engine-a (auction-engine) 반복 재시작 중 (CrashLoopBackOff)"
+              description: "컨테이너가 반복해서 재시작되고 있다. kubectl -n auction logs auction-engine-a -c auction-engine --previous 로 직전 로그를 확인한다."
+
+  # 기동 중 DB 대기 등으로 잠깐(2분) CrashLoopBackOff였다가 회복 → 어느 시점에도 발생하지 않음
+  # (회복하면 kube-state-metrics에서 해당 시계열이 사라진다 → stale)
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_waiting_reason{job="kube-state-metrics", namespace="auction", pod="auction-engine-a", container="auction-engine", reason="CrashLoopBackOff"}'
+        values: "1 1 1 stale"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: KubePodCrashLooping
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: KubePodCrashLooping
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: KubePodCrashLooping
+        exp_alerts: []
+
+  # 재시작이 있었고 마지막 종료 사유가 OOMKilled → 발생
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_restarts_total{job="kube-state-metrics", namespace="auction", pod="auction-engine-a", container="auction-engine"}'
+        values: "0 0 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+      - series: 'kube_pod_container_status_last_terminated_reason{job="kube-state-metrics", namespace="auction", pod="auction-engine-a", container="auction-engine", reason="OOMKilled"}'
+        values: "1x15"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: KubeContainerOOMKilled
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: kubernetes
+              job: kube-state-metrics
+              namespace: auction
+              pod: auction-engine-a
+              container: auction-engine
+            exp_annotations:
+              summary: "auction/auction-engine-a (auction-engine) 메모리 초과로 종료됨 (OOMKilled)"
+              description: "컨테이너가 memory limit을 넘어 강제 종료됐다. limit이 작거나 메모리 누수일 수 있다 (JVM이면 JvmOldGenAfterGcHigh 알람 확인)."
+
+  # 다른 네임스페이스(kube-system)는 대상이 아니다
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_waiting_reason{job="kube-state-metrics", namespace="kube-system", pod="traefik-a", container="traefik", reason="CrashLoopBackOff"}'
+        values: "1x15"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: KubePodCrashLooping
+        exp_alerts: []
+
+  # Pending 10분 이상 → 발생
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_status_phase{job="kube-state-metrics", namespace="auction", pod="auction-engine-b", phase="Pending"}'
+        values: "1x15"
+      - series: 'kube_pod_status_phase{job="kube-state-metrics", namespace="auction", pod="auction-engine-b", phase="Running"}'
+        values: "0x15"
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: KubePodNotRunning
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: KubePodNotRunning
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: kubernetes
+              namespace: auction
+              pod: auction-engine-b
+              phase: Pending
+            exp_annotations:
+              summary: "auction/auction-engine-b 10분 넘게 Pending 상태"
+              description: "Pending이면 자원 부족(requests) 또는 PVC/이미지 문제다. kubectl -n auction describe pod auction-engine-b 의 Events를 확인한다."
+
+  # DB StatefulSet이 Ready가 아님 → critical
+  - interval: 1m
+    input_series:
+      - series: 'kube_statefulset_status_replicas{job="kube-state-metrics", namespace="auction", statefulset="auction-db"}'
+        values: "1x10"
+      - series: 'kube_statefulset_status_replicas_ready{job="kube-state-metrics", namespace="auction", statefulset="auction-db"}'
+        values: "0x10"
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: KubeStatefulSetReplicasUnavailable
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: kubernetes
+              job: kube-state-metrics
+              namespace: auction
+              statefulset: auction-db
+            exp_annotations:
+              summary: "auction/auction-db 준비되지 않은 replica 1개"
+              description: "auction-db(Postgres)가 Ready가 아니면 모든 API가 실패한다. kubectl -n auction describe pod 로 확인한다."
+
+  # 엔진 외 수집 대상 다운 → MonitoringTargetDown, 엔진은 제외
+  - interval: 1m
+    input_series:
+      - series: 'up{job="node-exporter", instance="10.0.0.1:9100"}'
+        values: "0x10"
+      - series: 'up{job="auction-engine", instance="10.0.0.2:8080"}'
+        values: "0x10"
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: MonitoringTargetDown
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: monitoring
+              job: node-exporter
+              instance: 10.0.0.1:9100
+            exp_annotations:
+              summary: "node-exporter 지표 수집 실패 (10.0.0.1:9100)"
+              description: "5분 이상 지표를 가져오지 못했다. 해당 지표 기반 알람(서버 디스크, Pod 재시작 등)이 동작하지 않는 상태다."

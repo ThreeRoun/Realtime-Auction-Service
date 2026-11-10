@@ -1,6 +1,6 @@
 name: CI - baseline PR checks
 
-# baseline 브랜치로 향하는 PR에서 실제 배포 전에 Dockerfile/컴포즈 구성이 깨지지 않는지 검증
+# baseline 브랜치로 향하는 PR에서 실제 배포 전에 Docker 이미지 빌드와 k8s 매니페스트(앱, 모니터링)가 깨지지 않는지 검증
 
 on:
   pull_request:

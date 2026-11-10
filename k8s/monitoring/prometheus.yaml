@@ -5,7 +5,7 @@ metadata:
   name: prometheus
   namespace: monitoring
 ---
-# Pod 목록 조회 권한은 auction 네임스페이스에만 준다 (클러스터 전체 권한 X)
+# Pod 목록 조회 권한은 수집 대상 네임스페이스(auction, monitoring)에만 준다 (클러스터 전체 권한 X)
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -21,6 +21,30 @@ kind: RoleBinding
 metadata:
   name: prometheus-discovery
   namespace: auction
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: prometheus-discovery
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: prometheus-discovery
+  namespace: monitoring
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: prometheus-discovery
+  namespace: monitoring
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -102,12 +126,17 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /etc/prometheus
+            - name: rules
+              mountPath: /etc/prometheus-rules
             - name: data
               mountPath: /prometheus
       volumes:
         - name: config
           configMap:
             name: prometheus-config
+        - name: rules
+          configMap:
+            name: prometheus-rules
         - name: data
           persistentVolumeClaim:
             claimName: prometheus-data

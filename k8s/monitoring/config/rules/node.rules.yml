@@ -1,0 +1,75 @@
+# 서버(노드) 자원 알람 - node-exporter 지표 기반 (k8s 환경 전용, compose에는 node-exporter가 없어 발생하지 않음)
+#
+# 단일 노드에서 DB, Prometheus, Loki, 상품 이미지가 같은 디스크를 쓰므로 디스크 알람이 가장 중요하다.
+# 디스크가 가득 차면 DB 쓰기 실패 → 입찰 실패로 이어지지만, 앱 지표만으로는 원인이 디스크인지 알 수 없다.
+
+groups:
+  - name: node.resources
+    rules:
+      - alert: NodeDiskSpaceLow
+        expr: |
+          (
+            node_filesystem_avail_bytes{job="node-exporter", fstype!~"tmpfs|overlay|squashfs|nsfs|ramfs|fuse.*"}
+            / node_filesystem_size_bytes{job="node-exporter", fstype!~"tmpfs|overlay|squashfs|nsfs|ramfs|fuse.*"}
+          ) < 0.15
+          and node_filesystem_readonly{job="node-exporter"} == 0
+        for: 5m
+        labels:
+          severity: warning
+          service: node
+        annotations:
+          summary: "디스크 여유 {{ $value | humanizePercentage }} ({{ $labels.node }}:{{ $labels.mountpoint }})"
+          description: "디스크 여유 공간이 15% 미만이다. 로그/지표 보존 기간, 상품 이미지, DB 크기를 확인한다."
+
+      - alert: NodeDiskSpaceCritical
+        expr: |
+          (
+            node_filesystem_avail_bytes{job="node-exporter", fstype!~"tmpfs|overlay|squashfs|nsfs|ramfs|fuse.*"}
+            / node_filesystem_size_bytes{job="node-exporter", fstype!~"tmpfs|overlay|squashfs|nsfs|ramfs|fuse.*"}
+          ) < 0.05
+          and node_filesystem_readonly{job="node-exporter"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: node
+        annotations:
+          summary: "디스크 여유 {{ $value | humanizePercentage }} - 곧 가득 참 ({{ $labels.node }}:{{ $labels.mountpoint }})"
+          description: "디스크가 가득 차면 DB 쓰기가 실패해 입찰이 실패한다. 즉시 공간을 확보한다."
+
+      # 지금 추세(최근 6시간)대로면 24시간 안에 가득 차는 경우 - 여유가 많을 때 오탐을 막기 위해 40% 미만일 때만
+      - alert: NodeDiskWillFillIn24h
+        expr: |
+          predict_linear(node_filesystem_avail_bytes{job="node-exporter", fstype!~"tmpfs|overlay|squashfs|nsfs|ramfs|fuse.*"}[6h], 24 * 3600) < 0
+          and
+          (
+            node_filesystem_avail_bytes{job="node-exporter", fstype!~"tmpfs|overlay|squashfs|nsfs|ramfs|fuse.*"}
+            / node_filesystem_size_bytes{job="node-exporter", fstype!~"tmpfs|overlay|squashfs|nsfs|ramfs|fuse.*"}
+          ) < 0.4
+          and node_filesystem_readonly{job="node-exporter"} == 0
+        for: 30m
+        labels:
+          severity: warning
+          service: node
+        annotations:
+          summary: "디스크가 24시간 안에 가득 찰 추세 ({{ $labels.node }}:{{ $labels.mountpoint }})"
+          description: "최근 6시간 사용량 증가 추세로 계산했다. 로그 폭증이나 이미지 업로드 급증 여부를 확인한다."
+
+      - alert: NodeMemoryLow
+        expr: node_memory_MemAvailable_bytes{job="node-exporter"} / node_memory_MemTotal_bytes{job="node-exporter"} < 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: node
+        annotations:
+          summary: "서버 사용 가능 메모리 {{ $value | humanizePercentage }} ({{ $labels.node }})"
+          description: "사용 가능 메모리가 10% 미만이다. 이대로면 OOMKilled로 Pod가 재시작될 수 있다. kubectl top pod -A로 많이 쓰는 Pod를 확인한다."
+
+      - alert: NodeCpuHigh
+        expr: 1 - avg by (node) (rate(node_cpu_seconds_total{job="node-exporter", mode="idle"}[5m])) > 0.9
+        for: 15m
+        labels:
+          severity: warning
+          service: node
+        annotations:
+          summary: "서버 CPU 사용률 {{ $value | humanizePercentage }} ({{ $labels.node }})"
+          description: "15분 이상 CPU 사용률이 90%를 넘었다. 앱 지연 알람과 함께 떠 있다면 서버 자원 부족이 원인일 수 있다."

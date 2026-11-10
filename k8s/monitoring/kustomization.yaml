@@ -1,4 +1,5 @@
-# 모니터링·로깅 스택 (Prometheus / Loki / Alloy / Grafana) - namespace: monitoring
+# 모니터링·로깅·알람 스택 - namespace: monitoring
+#   Prometheus / Alertmanager / node-exporter / kube-state-metrics / Loki / Alloy / Grafana
 # 앱(k8s/overlays/prod)과 따로 적용한다:  kubectl apply -k k8s/monitoring
 #
 # Prometheus의 Pod 조회 권한(Role)은 auction 네임스페이스에 만들어야 해서,
@@ -14,6 +15,9 @@ labels:
 resources:
   - namespace.yaml
   - prometheus.yaml
+  - alertmanager.yaml
+  - node-exporter.yaml
+  - kube-state-metrics.yaml
   - loki.yaml
   - alloy.yaml
   - grafana.yaml
@@ -24,6 +28,17 @@ configMapGenerator:
     namespace: monitoring
     files:
       - config/prometheus.yml
+  - name: prometheus-rules
+    namespace: monitoring
+    files:
+      - config/rules/auction-engine.rules.yml
+      - config/rules/node.rules.yml
+      - config/rules/kubernetes.rules.yml
+      - config/rules/monitoring.rules.yml
+  - name: alertmanager-config
+    namespace: monitoring
+    files:
+      - config/alertmanager.yml
   - name: loki-config
     namespace: monitoring
     files:
