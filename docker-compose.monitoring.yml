@@ -1,9 +1,9 @@
-# 모니터링 스택 (Prometheus)
+# 모니터링 스택 (Prometheus + Alertmanager)
 # 기존 서비스 compose 파일과 함께 실행한다:
 #   docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
 #
 # 로깅 스택(docker-compose.logging.yml)과 같이 띄우면, 그쪽 Grafana에서
-# 지표(Prometheus)와 로그(Loki)를 한 화면에서 같이 볼 수 있다:
+# 지표(Prometheus)와 로그(Loki), 알람(Alertmanager)을 한 화면에서 같이 볼 수 있다:
 #   docker compose -f docker-compose.yml -f docker-compose.logging.yml -f docker-compose.monitoring.yml up -d --build
 
 services:
@@ -17,7 +17,29 @@ services:
       - "9090:9090"
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/rules:/etc/prometheus/rules:ro
       - prometheus-data:/prometheus
+    depends_on:
+      - alertmanager
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    container_name: auction-alertmanager
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    ports:
+      - "9093:9093"
+    environment:
+      # 알림 메시지의 시각을 한국 시간으로 표시
+      - TZ=Asia/Seoul
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      # Discord webhook URL 등 비밀값 (git 미포함, monitoring/README.md 참고)
+      - ./monitoring/alertmanager/secrets:/etc/alertmanager/secrets:ro
+      - alertmanager-data:/alertmanager
 
 volumes:
   prometheus-data:
+  alertmanager-data:

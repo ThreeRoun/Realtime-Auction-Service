@@ -1,0 +1,50 @@
+# Alertmanager: Prometheus가 보낸 알람을 묶고(group), 중복을 줄이고(inhibit/repeat), 수신처로 보낸다.
+#
+# 수신처: Discord 채널 (webhook)
+# - webhook URL은 비밀값이라 git에 올리지 않고 파일로 마운트한다:
+#     monitoring/alertmanager/secrets/discord-webhook-url  (.gitignore 처리됨)
+#   설정 방법은 monitoring/README.md의 "Discord 알림 연결" 참고.
+# - 알람은 Alertmanager UI(http://localhost:9093)와 Grafana(Alerting → Alertmanager)에서도 볼 수 있다.
+
+route:
+  receiver: discord
+  # 같은 알람 이름 + 서비스는 한 번의 알림으로 묶는다 (마감 직전 폭주 때 알림 폭탄 방지)
+  group_by: [alertname, service]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers: [severity="critical"]
+      receiver: discord
+      group_wait: 10s
+      repeat_interval: 1h
+
+# 엔진이 통째로 죽었으면 그로 인한 나머지 엔진 알람(5xx, 지연 등)은 숨긴다 - 근본 원인 하나만 보이게
+inhibit_rules:
+  - source_matchers: [alertname="AuctionEngineDown"]
+    target_matchers: [service="auction-engine", alertname!="AuctionEngineDown"]
+    equal: [service]
+  # 같은 원인의 critical이 떠 있으면 warning은 숨긴다 (예: 커넥션 타임아웃 → 풀 포화 warning)
+  - source_matchers: [severity="critical"]
+    target_matchers: [severity="warning"]
+    equal: [service]
+
+receivers:
+  - name: discord
+    discord_configs:
+      - webhook_url_file: /etc/alertmanager/secrets/discord-webhook-url
+        send_resolved: true
+        # 제목 예: [FIRING:2] BidEndpoint5xxRate (critical)
+        title: '[{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .CommonLabels.alertname }} ({{ .CommonLabels.severity }})'
+        message: |-
+          {{ range .Alerts -}}
+          {{ if eq .Status "firing" }}🔴{{ else }}✅{{ end }} **{{ .Annotations.summary }}**
+          {{ .Annotations.description }}
+          시작: {{ .StartsAt.Local.Format "2006-01-02 15:04:05" }}{{ if eq .Status "resolved" }} / 해소: {{ .EndsAt.Local.Format "2006-01-02 15:04:05" }}{{ end }}
+
+          {{ end -}}
+
+    # --- 추가 예정: 장애 트리아지 봇 (critical만 보내려면 route에 별도 receiver로 분리) ---
+    # webhook_configs:
+    #   - url: http://incident-bot:8080/alerts
+    #     send_resolved: true

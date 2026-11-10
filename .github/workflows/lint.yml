@@ -16,6 +16,25 @@ jobs:
         with:
           globs: "**/*.md"
 
+  # 알람 규칙/설정 문법 + 규칙 단위 테스트(monitoring/prometheus/rules/tests)
+  monitoring:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check Prometheus config and rules
+        run: |
+          docker run --rm -v "$PWD/monitoring":/m -w /m/prometheus --entrypoint promtool \
+            prom/prometheus:v3.0.1 check rules rules/auction-engine.rules.yml
+          docker run --rm -v "$PWD/monitoring":/m -w /m/prometheus/rules/tests --entrypoint promtool \
+            prom/prometheus:v3.0.1 test rules auction-engine.rules.test.yml
+
+      - name: Check Alertmanager config
+        run: |
+          docker run --rm -v "$PWD/monitoring/alertmanager":/a --entrypoint amtool \
+            prom/alertmanager:v0.28.1 check-config /a/alertmanager.yml
+
   auction-engine:
     runs-on: ubuntu-latest
     steps:

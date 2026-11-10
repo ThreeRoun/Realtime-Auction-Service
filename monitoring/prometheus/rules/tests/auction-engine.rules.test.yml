@@ -1,0 +1,112 @@
+# promtool 규칙 단위 테스트 - 가짜 시계열을 넣고 "이 시점에 이 알람이 떠야/뜨지 말아야 한다"를 검증한다.
+# 실행 방법은 monitoring/README.md 참고.
+
+rule_files:
+  - ../auction-engine.rules.yml
+
+evaluation_interval: 15s
+
+tests:
+  # 엔진 다운: 1분 이상 지속돼야 발생
+  - interval: 15s
+    input_series:
+      - series: 'up{job="auction-engine", instance="auction-engine:8080"}'
+        values: "1x4 0x12"
+    alert_rule_test:
+      - eval_time: 1m30s
+        alertname: AuctionEngineDown
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: AuctionEngineDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: auction-engine
+              job: auction-engine
+              instance: auction-engine:8080
+            exp_annotations:
+              summary: "auction-engine 메트릭 수집 실패 (인스턴스 auction-engine:8080)"
+              description: "1분 이상 /actuator/prometheus 응답이 없다. 프로세스 다운, 네트워크 단절, 또는 응답 불가 상태(GC 정지, 스레드 고갈)일 수 있다."
+
+  # 전체 API 5xx 비율 10% (분당 100건 중 10건) → 발생
+  - interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{application="auction-engine", method="GET", uri="/api/products", status="200"}'
+        values: "0+90x15"
+      - series: 'http_server_requests_seconds_count{application="auction-engine", method="GET", uri="/api/products", status="500"}'
+        values: "0+10x15"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: AuctionEngineHigh5xxRate
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: auction-engine
+            exp_annotations:
+              summary: "API 5xx 비율 10% (기준 5%)"
+              description: "전체 API 요청 중 5xx 응답 비율이 2분 이상 5%를 넘었다."
+
+  # 트래픽이 거의 없을 때(5분에 몇 건) 1건 실패로 비율이 튀어도 알람을 띄우지 않는다
+  - interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{application="auction-engine", method="GET", uri="/api/products", status="200"}'
+        values: "0x15"
+      - series: 'http_server_requests_seconds_count{application="auction-engine", method="GET", uri="/api/products", status="500"}'
+        values: "0 0 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: AuctionEngineHigh5xxRate
+        exp_alerts: []
+
+  # 입찰 API: 4xx(정상 거절)는 많아도 무시, 5xx 5%면 발생
+  - interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{application="auction-engine", method="POST", uri="/api/bids", status="201"}'
+        values: "0+37x15"
+      - series: 'http_server_requests_seconds_count{application="auction-engine", method="POST", uri="/api/bids", status="400"}'
+        values: "0+20x15"
+      - series: 'http_server_requests_seconds_count{application="auction-engine", method="POST", uri="/api/bids", status="500"}'
+        values: "0+3x15"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: BidEndpoint5xxRate
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: auction-engine
+            exp_annotations:
+              summary: "입찰 API 5xx 비율 5% (기준 2%)"
+              description: "POST /api/bids 5xx가 1분 이상 2%를 넘었다. 입찰 실패는 곧바로 사용자 손실이므로 전체 API보다 기준을 낮게 잡았다. DB 락 경합/커넥션 고갈 알람을 같이 확인한다."
+
+  # 입찰 API 4xx만 많은 경우 → 알람 없음
+  - interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{application="auction-engine", method="POST", uri="/api/bids", status="201"}'
+        values: "0+10x15"
+      - series: 'http_server_requests_seconds_count{application="auction-engine", method="POST", uri="/api/bids", status="409"}'
+        values: "0+50x15"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: BidEndpoint5xxRate
+        exp_alerts: []
+
+  # DB 커넥션 획득 타임아웃: 1건이라도 생기면 발생
+  - interval: 1m
+    input_series:
+      - series: 'hikaricp_connections_timeout_total{application="auction-engine", pool="HikariPool-1"}'
+        values: "0 0 0 2 2 2 2"
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: DbConnectionAcquireTimeout
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: DbConnectionAcquireTimeout
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: auction-engine
+              application: auction-engine
+              pool: HikariPool-1
+            exp_annotations:
+              summary: "DB 커넥션 획득 타임아웃 발생 (최근 5분 2건)"
+              description: "HikariCP 풀에서 커넥션을 얻지 못해 요청이 실패했다. DB 다운, 긴 트랜잭션, 풀 크기 부족을 확인한다."

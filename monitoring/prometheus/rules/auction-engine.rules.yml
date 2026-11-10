@@ -1,0 +1,147 @@
+# auction-engine 알람 규칙
+#
+# 원칙
+# - "증상"(사용자가 체감하는 에러/지연)을 critical로, "원인 징후"(풀/메모리/GC)를 warning으로 둔다.
+# - 트래픽이 거의 없을 때 요청 1~2건 실패로 비율이 튀는 것을 막기 위해 최소 요청량 조건을 함께 건다.
+# - 입찰(POST /api/bids)의 4xx는 "현재가보다 낮은 입찰" 같은 정상 거절이라 알람 대상이 아니다. 5xx만 본다.
+#
+# 라벨
+# - severity: critical(즉시 대응) | warning(업무 시간 내 확인)
+# - service:  Alertmanager에서 그룹핑/억제(inhibit)에 쓴다.
+#
+# 검증: promtool check rules / promtool test rules (monitoring/README.md 참고)
+
+groups:
+  - name: auction-engine.availability
+    rules:
+      - alert: AuctionEngineDown
+        expr: up{job="auction-engine"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: auction-engine
+        annotations:
+          summary: "auction-engine 메트릭 수집 실패 (인스턴스 {{ $labels.instance }})"
+          description: "1분 이상 /actuator/prometheus 응답이 없다. 프로세스 다운, 네트워크 단절, 또는 응답 불가 상태(GC 정지, 스레드 고갈)일 수 있다."
+
+      - alert: AuctionEngineRestarted
+        expr: changes(process_start_time_seconds{job="auction-engine"}[15m]) > 0
+        labels:
+          severity: warning
+          service: auction-engine
+        annotations:
+          summary: "auction-engine이 최근 15분 내 재시작됨"
+          description: "OOM, liveness 실패, 배포 등으로 프로세스가 다시 시작됐다. 의도한 배포가 아니라면 직전 로그를 확인한다."
+
+  - name: auction-engine.http
+    rules:
+      - alert: AuctionEngineHigh5xxRate
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{application="auction-engine", status=~"5..", uri!~"/actuator.*"}[5m]))
+            /
+            sum(rate(http_server_requests_seconds_count{application="auction-engine", uri!~"/actuator.*"}[5m]))
+          ) > 0.05
+          and
+          sum(rate(http_server_requests_seconds_count{application="auction-engine", uri!~"/actuator.*"}[5m])) > 0.2
+        for: 2m
+        labels:
+          severity: critical
+          service: auction-engine
+        annotations:
+          summary: "API 5xx 비율 {{ $value | humanizePercentage }} (기준 5%)"
+          description: "전체 API 요청 중 5xx 응답 비율이 2분 이상 5%를 넘었다."
+
+      - alert: BidEndpoint5xxRate
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{application="auction-engine", method="POST", uri="/api/bids", status=~"5.."}[5m]))
+            /
+            sum(rate(http_server_requests_seconds_count{application="auction-engine", method="POST", uri="/api/bids"}[5m]))
+          ) > 0.02
+          and
+          sum(rate(http_server_requests_seconds_count{application="auction-engine", method="POST", uri="/api/bids"}[5m])) > 0.1
+        for: 1m
+        labels:
+          severity: critical
+          service: auction-engine
+        annotations:
+          summary: "입찰 API 5xx 비율 {{ $value | humanizePercentage }} (기준 2%)"
+          description: "POST /api/bids 5xx가 1분 이상 2%를 넘었다. 입찰 실패는 곧바로 사용자 손실이므로 전체 API보다 기준을 낮게 잡았다. DB 락 경합/커넥션 고갈 알람을 같이 확인한다."
+
+      - alert: BidEndpointLatencyHigh
+        expr: |
+          histogram_quantile(0.99,
+            sum by (le) (rate(http_server_requests_seconds_bucket{application="auction-engine", method="POST", uri="/api/bids"}[5m]))
+          ) > 0.5
+        for: 3m
+        labels:
+          severity: warning
+          service: auction-engine
+        annotations:
+          summary: "입찰 API p99 지연 {{ $value | humanizeDuration }} (기준 500ms)"
+          description: "마감 직전 입찰이 몰리면 지연이 곧 입찰 실패로 이어진다. 락 대기, 커넥션 풀 대기 여부를 확인한다."
+
+      - alert: ApiLatencyHigh
+        expr: |
+          histogram_quantile(0.99,
+            sum by (le, uri) (rate(http_server_requests_seconds_bucket{application="auction-engine", uri!~"/actuator.*"}[5m]))
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+          service: auction-engine
+        annotations:
+          summary: "{{ $labels.uri }} p99 지연 {{ $value | humanizeDuration }} (기준 1s)"
+          description: "엔드포인트별 p99 응답 시간이 5분 이상 1초를 넘었다. 슬로우 쿼리 / N+1 / 외부 의존성 지연을 의심한다."
+
+  - name: auction-engine.database
+    rules:
+      - alert: DbConnectionAcquireTimeout
+        expr: increase(hikaricp_connections_timeout_total{application="auction-engine"}[5m]) > 0
+        labels:
+          severity: critical
+          service: auction-engine
+        annotations:
+          summary: "DB 커넥션 획득 타임아웃 발생 (최근 5분 {{ $value | humanize }}건)"
+          description: "HikariCP 풀에서 커넥션을 얻지 못해 요청이 실패했다. DB 다운, 긴 트랜잭션, 풀 크기 부족을 확인한다."
+
+      - alert: DbConnectionPoolSaturated
+        expr: |
+          max by (pool) (hikaricp_connections_pending{application="auction-engine"}) > 0
+          and
+          max by (pool) (hikaricp_connections_active{application="auction-engine"} / hikaricp_connections_max{application="auction-engine"}) >= 0.9
+        for: 2m
+        labels:
+          severity: warning
+          service: auction-engine
+        annotations:
+          summary: "DB 커넥션 풀 포화 (풀 {{ $labels.pool }})"
+          description: "풀 사용률 90% 이상이면서 커넥션을 기다리는 스레드가 2분 이상 존재한다. 타임아웃(critical)으로 번지기 전 단계."
+
+  - name: auction-engine.jvm
+    rules:
+      - alert: JvmOldGenAfterGcHigh
+        # GC 직후에도 살아남은 데이터(live data)가 old gen 최대치의 90%를 넘으면 메모리 누수/과다 캐싱 신호다.
+        # (heap 전체 used/max는 G1에서 eden/survivor의 max가 -1로 나와 비율이 왜곡되므로 쓰지 않는다)
+        expr: |
+          max(jvm_gc_live_data_size_bytes{application="auction-engine"})
+          /
+          max(jvm_gc_max_data_size_bytes{application="auction-engine"}) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          service: auction-engine
+        annotations:
+          summary: "GC 후 Old Gen 사용률 {{ $value | humanizePercentage }}"
+          description: "GC를 해도 메모리가 회수되지 않고 있다. 이대로면 OOM으로 재시작될 수 있다. 힙덤프 확보를 검토한다."
+
+      - alert: JvmGcPauseHigh
+        expr: sum(rate(jvm_gc_pause_seconds_sum{application="auction-engine"}[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: auction-engine
+        annotations:
+          summary: "GC 정지 시간 비율 {{ $value | humanizePercentage }} (기준 10%)"
+          description: "실행 시간의 10% 이상을 GC 정지에 쓰고 있다. 응답 지연과 probe 실패로 이어질 수 있다."
