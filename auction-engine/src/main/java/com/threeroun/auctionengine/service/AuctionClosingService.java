@@ -79,14 +79,11 @@ public class AuctionClosingService {
         eventPublisher.publishEvent(new AuctionClosedEvent(productId, winnerId, finalPrice));
     }
 
-    // PENDING -> IN_PROGRESS 전이. 이 상태를 바꾸는 다른 경로(입찰 등)가 없어서 락 없이 처리해도
-    // 안전하다 (BidService는 PENDING 상품에는 애초에 입찰을 허용하지 않는다).
+    // PENDING -> IN_PROGRESS 전이. 엔티티를 읽어서 바꾸는 대신 조건부 UPDATE 쿼리 하나로 처리한다
+    // (ProductRepository.activatePendingAuctions 주석 참고) - k8s 롤링 업데이트 중 Pod가
+    // 잠깐 겹쳐도 안전하다.
     @Transactional
     public void activatePendingAuctions() {
-        LocalDateTime now = LocalDateTime.now();
-        List<Product> toActivate = productRepository.findByStatusAndStartAtLessThanEqual(ProductStatus.PENDING, now);
-        for (Product product : toActivate) {
-            product.setStatus(ProductStatus.IN_PROGRESS);
-        }
+        productRepository.activatePendingAuctions(LocalDateTime.now());
     }
 }
