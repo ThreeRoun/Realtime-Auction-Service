@@ -45,11 +45,21 @@ spec:
         prometheus.io/port: "8080"
         prometheus.io/path: /actuator/prometheus
     spec:
+      # SIGTERM을 보내는 시점과 Service가 이 Pod를 엔드포인트 목록에서 빼는 시점이 완전히
+      # 동시가 아니라서, preStop으로 몇 초 쉬어 그 전파 시간을 벌어준 다음에 SIGTERM을 보낸다.
+      # 전체 유예 시간(terminationGracePeriodSeconds)은 preStop 대기 + 앱의 graceful shutdown
+      # 처리 시간(application.properties의 spring.lifecycle.timeout-per-shutdown-phase=20s)을
+      # 합친 것보다 여유 있게 잡는다 - 다 쓰면 k8s가 SIGKILL로 강제 종료한다.
+      terminationGracePeriodSeconds: 30
       imagePullSecrets:
         - name: ghcr-secret
       containers:
         - name: auction-engine
           image: ghcr.io/threeroun/auction-engine
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 5"]
           ports:
             - containerPort: 8080
           envFrom:
