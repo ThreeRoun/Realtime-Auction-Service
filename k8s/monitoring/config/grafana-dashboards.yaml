@@ -1,0 +1,15 @@
+# Grafana 시작 시 config/dashboards/*.json 대시보드를 자동 등록한다 (Dashboards > Realtime Auction 폴더)
+#
+# 레포의 JSON이 원본이다. UI에서 고친 내용은 저장할 수 없으므로(allowUiUpdates: false)
+# 수정하려면 UI에서 편집 → Export(JSON) → config/dashboards/*.json에 덮어써서 커밋한다.
+apiVersion: 1
+
+providers:
+  - name: realtime-auction
+    folder: Realtime Auction
+    type: file
+    allowUiUpdates: false
+    # 레포에서 지운 대시보드는 Grafana에서도 지운다
+    disableDeletion: false
+    options:
+      path: /var/lib/grafana-dashboards
