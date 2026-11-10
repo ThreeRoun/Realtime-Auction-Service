@@ -1,5 +1,6 @@
 // server.js
 
+const http = require('http');
 // 1. 웹소켓 서버를 열고, Redis와 대화할 준비하기. 
 const { WebSocketServer, WebSocket } = require('ws');
 const Redis = require('ioredis');
@@ -34,8 +35,44 @@ const logger = pino({
 const PORT = process.env.PORT || 4000;
 const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
 const REDIS_PORT = Number(process.env.REDIS_PORT) || 6379;
-// wss: WebSocket Server (4000번 포트의 서버 전체 관리자)
-const wss = new WebSocketServer({ port : PORT });
+
+// 'auction_events' 채널을 구독 중인지 여부 (readiness 판단에 사용)
+let isSubscribed = false;
+
+// HTTP 서버: 쿠버네티스가 상태를 확인할 헬스 엔드포인트를 제공
+// WebSocket 서버는 이 HTTP 서버 위에 붙어서, 같은 4000번 포트를 함께 씀.
+const server = http.createServer((req, res) => {
+  // liveness: 프로세스가 살아서 요청에 응답 가능하면 200
+  if (req.url === '/healthz') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'ok' }));
+    return;
+  }
+
+  // readiness: Redis에 연결되어 있고 채널을 구독 중일 때만 200
+  // (Redis가 끊긴 Pod로 새 클라이언트가 붙으면 이벤트를 받지 못하기 때문)
+  if(req.url === '/readyz'){
+    const ready = redisSubscriber.status === 'ready' && isSubscribed;
+    // 503: 지금은 일을 받을 수 없다는 뜻의 상태 코드
+    // 쿠버네티스는 readiness가 200이 아니면 그 Pod로 새 요청을 보내지 않음.  
+    res.writeHead(ready ? 200 : 503, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      status: ready ? 'ready' : 'not_ready',
+      redis_status: redisSubscriber.status,
+      is_subscribed: isSubscribed
+    }));
+    return;
+  }
+
+  // 그 외 경로는 404
+  res.writeHead(404, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ status: 'not_found' }));
+});
+
+// WebSocket 서버: HTTP 서버 위에 붙어서, 같은 4000번 포트를 함께 씀.
+const wss = new WebSocketServer({ server });
+server.listen(PORT);
+
 // 포트가 실제로 열린 뒤에 "시작" 로그를 남긴다.
 // (서버 객체를 만든 직후에 남기면, 포트 열기에 실패해도 시작 로그가 찍히는 문제가 있음)
 wss.on('listening', () => {
@@ -125,6 +162,7 @@ redisSubscriber.subscribe('auction_events', (err,count) => {
   if (err) {
     logger.error({ event: 'redis_subscribe_error', channel: 'auction_events', err: err.message }, 'Redis 구독 실패');
   } else {
+    isSubscribed = true;
     logger.info({ event: 'redis_subscribe', channel: 'auction_events', count }, 'Redis 채널 구독 완료');
   }
 });
@@ -284,9 +322,12 @@ const gracefulShutdown = () => {
 
   wss.close(()=>{
     logger.info({event: 'shutdown_ws_closed'}, 'WebSocket 서버 닫힘');
-    redisSubscriber.quit().then(()=>{
-      logger.info({event: 'shutdown_complete'}, 'Redis 연결 정상 종료, 서버 종료');
-      process.exit(0);
+    // WebSocket 서버를 닫아도 HTTP 서버는 따로 닫아야 한다
+    server.close(()=>{
+      redisSubscriber.quit().then(()=>{
+        logger.info({event: 'shutdown_complete'}, 'Redis 연결 정상 종료, 서버 종료');
+        process.exit(0);
+      });
     });
   });
 

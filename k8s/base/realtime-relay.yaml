@@ -39,13 +39,15 @@ spec:
           envFrom:
             - configMapRef:
                 name: realtime-relay-config
-          # 일반 HTTP 요청에는 426을 돌려주는 WS 전용 서버라, HTTP 헬스 엔드포인트 도입 전까지는 TCP로 확인
+          # 일반 HTTP 요청에는 426을 돌려주는 WS 전용 서버
           readinessProbe:
-            tcpSocket:
+            httpGet:
+              path: /readyz
               port: 4000
             periodSeconds: 5
           livenessProbe:
-            tcpSocket:
+            httpGet:
+              path: /healthz
               port: 4000
             initialDelaySeconds: 10
             periodSeconds: 10
