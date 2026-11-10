@@ -29,6 +29,7 @@ spec:
       labels:
         app: realtime-relay
     spec:
+      terminationGracePeriodSeconds: 30     
       imagePullSecrets:
         - name: ghcr-secret
       containers:
