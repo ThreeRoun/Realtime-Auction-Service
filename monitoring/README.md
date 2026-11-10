@@ -51,12 +51,17 @@ Grafana에서 왼쪽 메뉴의 **Explore** → 데이터 소스 **Prometheus**�
 
 ## 알람 (Alerting)
 
-알람 규칙은 [`prometheus/rules/auction-engine.rules.yml`](prometheus/rules/auction-engine.rules.yml),
-알림 라우팅은 [`alertmanager/alertmanager.yml`](alertmanager/alertmanager.yml)에 있습니다.
+알람 규칙과 알림 라우팅은 **k8s 환경과 같은 파일**을 씁니다(compose에서 마운트).
+
+- 알람 규칙: [`k8s/monitoring/config/rules/`](../k8s/monitoring/config/rules/) - 이 표는 `auction-engine.rules.yml`
+- 알림 라우팅: [`k8s/monitoring/config/alertmanager.yml`](../k8s/monitoring/config/alertmanager.yml)
+
+서버/Kubernetes 상태 알람(`node.rules.yml`, `kubernetes.rules.yml`)은 node-exporter, kube-state-metrics가 있는
+k8s 환경에서만 동작합니다 - [k8s/README.md](../k8s/README.md#알람) 참고.
 
 | 알람 | 심각도 | 조건 |
 | --- | --- | --- |
-| `AuctionEngineDown` | critical | 메트릭 수집 실패 1분 지속 |
+| `AuctionEngineDown` | critical | 응답하는 엔진 인스턴스가 없음 1분 지속 (k8s에서는 Pod가 아예 없는 경우 포함) |
 | `AuctionEngineHigh5xxRate` | critical | 전체 API 5xx 비율 > 5% (2분, 최소 0.2 req/s) |
 | `BidEndpoint5xxRate` | critical | `POST /api/bids` 5xx 비율 > 2% (1분, 최소 0.1 req/s) - 4xx(정상 거절)는 제외 |
 | `DbConnectionAcquireTimeout` | critical | 최근 5분 내 HikariCP 커넥션 획득 타임아웃 발생 |
@@ -110,14 +115,11 @@ webhook URL은 비밀값이라 git에 올리지 않고, 각자 서버/로컬에�
 규칙을 수정했다면 PR 전에 로컬에서 문법 검사와 단위 테스트를 돌립니다(CI `Lint / monitoring` 잡에서도 실행).
 
 ```bash
-# 알람 규칙 문법
-docker run --rm -v "$PWD/monitoring":/m -w /m/prometheus --entrypoint promtool \
-  prom/prometheus:v3.0.1 check rules rules/auction-engine.rules.yml
-# 규칙 단위 테스트 (가짜 시계열로 "이때 알람이 떠야/뜨지 말아야 한다" 검증)
-docker run --rm -v "$PWD/monitoring":/m -w /m/prometheus/rules/tests --entrypoint promtool \
-  prom/prometheus:v3.0.1 test rules auction-engine.rules.test.yml
+# 알람 규칙 문법 + 단위 테스트 (가짜 시계열로 "이때 알람이 떠야/뜨지 말아야 한다" 검증)
+docker run --rm -v "$PWD/k8s/monitoring/config/rules":/r -w /r --entrypoint sh prom/prometheus:v3.0.1 \
+  -c 'promtool check rules *.rules.yml && cd tests && promtool test rules *.test.yml'
 # Alertmanager 설정
-docker run --rm -v "$PWD/monitoring/alertmanager":/a --entrypoint amtool \
+docker run --rm -v "$PWD/k8s/monitoring/config":/a --entrypoint amtool \
   prom/alertmanager:v0.28.1 check-config /a/alertmanager.yml
 ```
 

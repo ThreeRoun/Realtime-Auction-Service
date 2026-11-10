@@ -1,0 +1,63 @@
+# Kubernetes 상태 알람 - kube-state-metrics 지표 기반 (k8s 환경 전용)
+# 대상: 앱(auction)과 모니터링(monitoring) 네임스페이스
+
+groups:
+  - name: kubernetes.workloads
+    rules:
+      # 재시작 횟수(increase)로 판단하면 외삽 때문에 2회 재시작이 2.16회로 계산돼 오탐이 나므로,
+      # k8s가 판단한 CrashLoopBackOff 상태로 판단한다.
+      # - 재시작 사이에는 잠깐 Running이 되므로 max_over_time(5분)으로 이어 붙인다
+      # - 그 5분만큼 조건이 늘어나므로, for는 그보다 길게(10분) 둬야 기동 중 일시적인 재시작(수 분)이 걸러진다
+      - alert: KubePodCrashLooping
+        expr: max_over_time(kube_pod_container_status_waiting_reason{job="kube-state-metrics", namespace=~"auction|monitoring", reason="CrashLoopBackOff"}[5m]) >= 1
+        for: 10m
+        labels:
+          severity: warning
+          service: kubernetes
+        annotations:
+          summary: "{{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }}) 반복 재시작 중 (CrashLoopBackOff)"
+          description: "컨테이너가 반복해서 재시작되고 있다. kubectl -n {{ $labels.namespace }} logs {{ $labels.pod }} -c {{ $labels.container }} --previous 로 직전 로그를 확인한다."
+
+      - alert: KubeContainerOOMKilled
+        expr: |
+          increase(kube_pod_container_status_restarts_total{job="kube-state-metrics", namespace=~"auction|monitoring"}[15m]) > 0
+          and on (namespace, pod, container)
+          kube_pod_container_status_last_terminated_reason{job="kube-state-metrics", reason="OOMKilled"} == 1
+        labels:
+          severity: warning
+          service: kubernetes
+        annotations:
+          summary: "{{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }}) 메모리 초과로 종료됨 (OOMKilled)"
+          description: "컨테이너가 memory limit을 넘어 강제 종료됐다. limit이 작거나 메모리 누수일 수 있다 (JVM이면 JvmOldGenAfterGcHigh 알람 확인)."
+
+      - alert: KubePodNotRunning
+        expr: sum by (namespace, pod, phase) (kube_pod_status_phase{job="kube-state-metrics", namespace=~"auction|monitoring", phase=~"Pending|Unknown|Failed"}) > 0
+        for: 10m
+        labels:
+          severity: warning
+          service: kubernetes
+        annotations:
+          summary: "{{ $labels.namespace }}/{{ $labels.pod }} 10분 넘게 {{ $labels.phase }} 상태"
+          description: "Pending이면 자원 부족(requests) 또는 PVC/이미지 문제다. kubectl -n {{ $labels.namespace }} describe pod {{ $labels.pod }} 의 Events를 확인한다."
+
+      - alert: KubeDeploymentReplicasUnavailable
+        expr: kube_deployment_status_replicas_unavailable{job="kube-state-metrics", namespace=~"auction|monitoring"} > 0
+        for: 10m
+        labels:
+          severity: warning
+          service: kubernetes
+        annotations:
+          summary: "{{ $labels.namespace }}/{{ $labels.deployment }} 준비되지 않은 replica {{ $value }}개"
+          description: "원하는 replica 수만큼 Ready 상태가 아니다. 롤아웃이 멈췄거나 일부 Pod가 readiness를 통과하지 못하고 있다."
+
+      - alert: KubeStatefulSetReplicasUnavailable
+        expr: |
+          kube_statefulset_status_replicas{job="kube-state-metrics", namespace=~"auction|monitoring"}
+          - kube_statefulset_status_replicas_ready{job="kube-state-metrics", namespace=~"auction|monitoring"} > 0
+        for: 5m
+        labels:
+          severity: critical
+          service: kubernetes
+        annotations:
+          summary: "{{ $labels.namespace }}/{{ $labels.statefulset }} 준비되지 않은 replica {{ $value }}개"
+          description: "auction-db(Postgres)가 Ready가 아니면 모든 API가 실패한다. kubectl -n {{ $labels.namespace }} describe pod 로 확인한다."

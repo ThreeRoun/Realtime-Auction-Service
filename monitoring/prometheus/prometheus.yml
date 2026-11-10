@@ -3,7 +3,7 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
-# 알람 규칙 (monitoring/prometheus/rules/*.rules.yml)
+# 알람 규칙 (k8s/monitoring/config/rules/*.rules.yml - k8s 환경과 같은 파일, compose에서 마운트)
 rule_files:
   - /etc/prometheus/rules/*.rules.yml
 

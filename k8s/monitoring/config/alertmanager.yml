@@ -1,10 +1,11 @@
 # Alertmanager: Prometheus가 보낸 알람을 묶고(group), 중복을 줄이고(inhibit/repeat), 수신처로 보낸다.
+# k8s(k8s/monitoring/alertmanager.yaml)와 로컬 compose(docker-compose.monitoring.yml)가 같은 파일을 쓴다.
 #
 # 수신처: Discord 채널 (webhook)
-# - webhook URL은 비밀값이라 git에 올리지 않고 파일로 마운트한다:
-#     monitoring/alertmanager/secrets/discord-webhook-url  (.gitignore 처리됨)
-#   설정 방법은 monitoring/README.md의 "Discord 알림 연결" 참고.
-# - 알람은 Alertmanager UI(http://localhost:9093)와 Grafana(Alerting → Alertmanager)에서도 볼 수 있다.
+# - webhook URL은 비밀값이라 git에 올리지 않고 /etc/alertmanager/secrets/discord-webhook-url 파일로 넣는다:
+#     k8s:     alertmanager-discord Secret (k8s/README.md 참고)
+#     compose: monitoring/alertmanager/secrets/discord-webhook-url (.gitignore 처리, monitoring/README.md 참고)
+# - 알람은 Alertmanager UI와 Grafana(Alerting → Alertmanager)에서도 볼 수 있다.
 
 route:
   receiver: discord

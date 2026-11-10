@@ -17,7 +17,8 @@ services:
       - "9090:9090"
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./monitoring/prometheus/rules:/etc/prometheus/rules:ro
+      # 알람 규칙은 k8s 환경과 같은 파일을 쓴다
+      - ./k8s/monitoring/config/rules:/etc/prometheus/rules:ro
       - prometheus-data:/prometheus
     depends_on:
       - alertmanager
@@ -27,7 +28,7 @@ services:
     container_name: auction-alertmanager
     restart: unless-stopped
     command:
-      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --config.file=/etc/alertmanager/config/alertmanager.yml
       - --storage.path=/alertmanager
     ports:
       - "9093:9093"
@@ -35,7 +36,8 @@ services:
       # 알림 메시지의 시각을 한국 시간으로 표시
       - TZ=Asia/Seoul
     volumes:
-      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      # 라우팅/수신처 설정은 k8s 환경과 같은 파일을 쓴다
+      - ./k8s/monitoring/config/alertmanager.yml:/etc/alertmanager/config/alertmanager.yml:ro
       # Discord webhook URL 등 비밀값 (git 미포함, monitoring/README.md 참고)
       - ./monitoring/alertmanager/secrets:/etc/alertmanager/secrets:ro
       - alertmanager-data:/alertmanager

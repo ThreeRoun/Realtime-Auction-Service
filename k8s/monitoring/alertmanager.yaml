@@ -1,0 +1,83 @@
+# Alertmanager: Prometheus 알람을 묶고/억제해서 Discord로 발송 (config/alertmanager.yml - compose와 같은 파일)
+# Discord webhook URL은 alertmanager-discord Secret으로 서버에서 직접 만든다 (k8s/README.md 참고)
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager
+  namespace: monitoring
+spec:
+  selector:
+    app: alertmanager
+  ports:
+    - port: 9093
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alertmanager
+  namespace: monitoring
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: alertmanager
+  template:
+    metadata:
+      labels:
+        app: alertmanager
+      # 발송 실패 지표(alertmanager_notifications_failed_total) 수집용
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9093"
+    spec:
+      containers:
+        - name: alertmanager
+          image: prom/alertmanager:v0.28.1
+          args:
+            - --config.file=/etc/alertmanager/config/alertmanager.yml
+            - --storage.path=/alertmanager
+          env:
+            # 알림 메시지의 시각을 한국 시간으로 표시
+            - name: TZ
+              value: Asia/Seoul
+          ports:
+            - containerPort: 9093
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 9093
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: 9093
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alertmanager/config
+            - name: secrets
+              mountPath: /etc/alertmanager/secrets
+              readOnly: true
+            # silence/발송 기록. 재시작 시 초기화되면 진행 중인 알람이 한 번 더 발송될 수 있다.
+            - name: data
+              mountPath: /alertmanager
+      volumes:
+        - name: config
+          configMap:
+            name: alertmanager-config
+        # Secret이 없어도 기동은 한다 (발송 시점에 실패 로그 + AlertmanagerNotificationsFailing 알람)
+        - name: secrets
+          secret:
+            secretName: alertmanager-discord
+            optional: true
+        - name: data
+          emptyDir: {}

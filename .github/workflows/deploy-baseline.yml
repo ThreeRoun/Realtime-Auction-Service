@@ -6,7 +6,7 @@ name: Deploy to school server (baseline)
 #      (학교 방화벽이 외부 인바운드 SSH를 막으므로 서버에서 GitHub로 나가는 연결만 사용)
 #   3) 롤아웃 완료 + 서버 내부 localhost(Ingress)로 스모크 테스트
 #   4) 2~3 중 하나라도 실패하면 배포 직전 이미지로 자동 롤백
-#   5) 모니터링·로깅 스택(k8s/monitoring) 적용 - 별도 job이라 실패해도 앱 롤백과 무관하고,
+#   5) 모니터링·로깅·알람 스택(k8s/monitoring) 적용 - 별도 job이라 실패해도 앱 롤백과 무관하고,
 #      앱 배포가 실패해도 장애 확인에 필요하므로 계속 적용한다
 
 on:
@@ -169,7 +169,8 @@ jobs:
             done
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # 모니터링·로깅 스택 (Prometheus / Loki / Alloy / Grafana, namespace: monitoring)
+  # 모니터링·로깅·알람 스택 (namespace: monitoring)
+  #   Prometheus / Alertmanager / node-exporter / kube-state-metrics / Loki / Alloy / Grafana
   # - 앱 배포 job과 분리: 여기서 실패해도 앱은 롤백되지 않는다
   # - 앱 배포가 실패/건너뛰어져도 실행한다 (장애 상황일수록 모니터링이 필요)
   deploy-monitoring:
@@ -178,7 +179,7 @@ jobs:
     runs-on: [self-hosted, school-server]
     env:
       MON_NAMESPACE: monitoring
-      MON_APPS: prometheus loki alloy grafana
+      MON_APPS: prometheus alertmanager kube-state-metrics loki alloy grafana
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -193,6 +194,10 @@ jobs:
             echo "::error::$MON_NAMESPACE 네임스페이스에 grafana-admin Secret이 없습니다. k8s/README.md의 모니터링 스택 사전 준비를 진행하세요"
             exit 1
           fi
+          # Discord webhook이 없어도 Alertmanager는 뜨지만 알림이 발송되지 않는다
+          if ! kubectl -n "$MON_NAMESPACE" get secret alertmanager-discord > /dev/null 2>&1; then
+            echo "::warning::alertmanager-discord Secret이 없어 Discord 알림이 발송되지 않습니다. k8s/README.md 참고"
+          fi
 
       - name: Apply monitoring manifests
         run: kubectl apply -k k8s/monitoring
@@ -203,6 +208,7 @@ jobs:
           for app in $MON_APPS; do
             kubectl -n "$MON_NAMESPACE" rollout status deploy/"$app" --timeout=300s
           done
+          kubectl -n "$MON_NAMESPACE" rollout status ds/node-exporter --timeout=300s
 
       # Ingress(/grafana) → Grafana 접속 확인 + Prometheus가 경매 엔진 지표를 수집하는지 확인
       - name: Smoke test

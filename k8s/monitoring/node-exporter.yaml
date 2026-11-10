@@ -1,0 +1,67 @@
+# node-exporter: 서버(노드) 자체의 CPU / 메모리 / 디스크 지표 (노드마다 1개, DaemonSet)
+#
+# hostNetwork를 쓰지 않는다 - 노드 IP의 9100 포트가 클러스터 밖에 열리지 않도록.
+# 그래서 네트워크 지표는 서버 NIC가 아니라 이 Pod의 네트워크 기준이다 (CPU/메모리/디스크는 호스트 기준).
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-exporter
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: node-exporter
+  template:
+    metadata:
+      labels:
+        app: node-exporter
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
+    spec:
+      containers:
+        - name: node-exporter
+          image: prom/node-exporter:v1.8.2
+          args:
+            - --path.procfs=/host/proc
+            - --path.sysfs=/host/sys
+            - --path.rootfs=/host/root
+            # 컨테이너/쿠버네티스 내부 마운트는 제외하고 실제 디스크만 본다
+            - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/kubelet|var/lib/rancher/k3s/agent/containerd|var/lib/docker)($|/)
+          ports:
+            - containerPort: 9100
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 9100
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          securityContext:
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: proc
+              mountPath: /host/proc
+              readOnly: true
+            - name: sys
+              mountPath: /host/sys
+              readOnly: true
+            # mountPropagation(HostToContainer)은 호스트 /가 shared mount여야 해서 환경에 따라 기동이 실패하므로 쓰지 않는다.
+            # 대신 node-exporter 기동 후 새로 마운트된 디스크는 Pod를 재시작해야 보인다.
+            - name: root
+              mountPath: /host/root
+              readOnly: true
+      volumes:
+        - name: proc
+          hostPath:
+            path: /proc
+        - name: sys
+          hostPath:
+            path: /sys
+        - name: root
+          hostPath:
+            path: /

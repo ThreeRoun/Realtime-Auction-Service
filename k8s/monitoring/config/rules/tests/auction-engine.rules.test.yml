@@ -7,7 +7,7 @@ rule_files:
 evaluation_interval: 15s
 
 tests:
-  # 엔진 다운: 1분 이상 지속돼야 발생
+  # 엔진 다운(compose 방식): 대상은 있는데 응답 실패(up=0)가 1분 이상 지속돼야 발생
   - interval: 15s
     input_series:
       - series: 'up{job="auction-engine", instance="auction-engine:8080"}'
@@ -22,11 +22,39 @@ tests:
           - exp_labels:
               severity: critical
               service: auction-engine
-              job: auction-engine
-              instance: auction-engine:8080
             exp_annotations:
-              summary: "auction-engine 메트릭 수집 실패 (인스턴스 auction-engine:8080)"
-              description: "1분 이상 /actuator/prometheus 응답이 없다. 프로세스 다운, 네트워크 단절, 또는 응답 불가 상태(GC 정지, 스레드 고갈)일 수 있다."
+              summary: "auction-engine 응답 가능한 인스턴스 없음"
+              description: "1분 이상 /actuator/prometheus 응답이 없거나 수집 대상(Pod)이 없다. 프로세스 다운, Pod 기동 실패, 응답 불가 상태(GC 정지, 스레드 고갈)일 수 있다."
+
+  # 엔진 다운(k8s 방식): Pod가 Pending/삭제되어 수집 대상(up 시계열) 자체가 사라짐
+  - interval: 15s
+    input_series:
+      # 대상이 사라지면 Prometheus가 stale 마커를 기록해 시계열이 즉시 없어진다
+      - series: 'up{job="auction-engine", pod="auction-engine-a"}'
+        values: "1x4 stale"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: AuctionEngineDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: auction-engine
+              job: auction-engine
+            exp_annotations:
+              summary: "auction-engine 응답 가능한 인스턴스 없음"
+              description: "1분 이상 /actuator/prometheus 응답이 없거나 수집 대상(Pod)이 없다. 프로세스 다운, Pod 기동 실패, 응답 불가 상태(GC 정지, 스레드 고갈)일 수 있다."
+
+  # replica 2개 중 1개만 죽은 경우는 엔진 다운이 아니다 (서비스는 계속 응답)
+  - interval: 15s
+    input_series:
+      - series: 'up{job="auction-engine", pod="auction-engine-a"}'
+        values: "1x16"
+      - series: 'up{job="auction-engine", pod="auction-engine-b"}'
+        values: "1x4 0x12"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: AuctionEngineDown
+        exp_alerts: []
 
   # 전체 API 5xx 비율 10% (분당 100건 중 10건) → 발생
   - interval: 1m

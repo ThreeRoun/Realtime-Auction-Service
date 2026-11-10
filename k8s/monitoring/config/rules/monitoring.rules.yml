@@ -1,0 +1,27 @@
+# 모니터링 스택 자체 알람 - "알람이 안 오는데 실제로 문제가 없는 건지"를 구분하기 위함
+
+groups:
+  - name: monitoring.self
+    rules:
+      # 수집 대상(node-exporter, kube-state-metrics, alertmanager 등) 응답 없음. 엔진은 AuctionEngineDown이 따로 본다.
+      - alert: MonitoringTargetDown
+        expr: up{job!="auction-engine"} == 0
+        for: 5m
+        labels:
+          severity: warning
+          service: monitoring
+        annotations:
+          summary: "{{ $labels.job }} 지표 수집 실패 ({{ $labels.instance }})"
+          description: "5분 이상 지표를 가져오지 못했다. 해당 지표 기반 알람(서버 디스크, Pod 재시작 등)이 동작하지 않는 상태다."
+
+      # Discord 발송 실패 (webhook URL 누락/만료 등). 이 알람 자체는 Discord로 못 갈 수 있으므로
+      # Alertmanager UI나 Grafana에서 확인한다.
+      - alert: AlertmanagerNotificationsFailing
+        expr: sum by (integration) (rate(alertmanager_notifications_failed_total[10m])) > 0
+        for: 10m
+        labels:
+          severity: warning
+          service: monitoring
+        annotations:
+          summary: "Alertmanager {{ $labels.integration }} 알림 발송 실패 중"
+          description: "알림이 수신 채널로 전달되지 않고 있다. Alertmanager 로그와 webhook Secret(alertmanager-discord)을 확인한다."

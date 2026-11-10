@@ -14,15 +14,22 @@
 groups:
   - name: auction-engine.availability
     rules:
+      # 정상 응답하는 엔진 인스턴스가 하나도 없을 때.
+      # - compose: 대상이 고정이라 죽으면 up=0이 된다
+      # - k8s: Pod가 Pending/삭제되면 수집 대상 자체가 사라져 up 시계열이 없어진다 → absent()로 잡는다
+      # replica 중 일부만 죽은 경우는 KubeDeploymentReplicasUnavailable(kubernetes.rules.yml)이 잡는다.
       - alert: AuctionEngineDown
-        expr: up{job="auction-engine"} == 0
+        expr: |
+          sum(up{job="auction-engine"}) == 0
+          or
+          absent(up{job="auction-engine"})
         for: 1m
         labels:
           severity: critical
           service: auction-engine
         annotations:
-          summary: "auction-engine 메트릭 수집 실패 (인스턴스 {{ $labels.instance }})"
-          description: "1분 이상 /actuator/prometheus 응답이 없다. 프로세스 다운, 네트워크 단절, 또는 응답 불가 상태(GC 정지, 스레드 고갈)일 수 있다."
+          summary: "auction-engine 응답 가능한 인스턴스 없음"
+          description: "1분 이상 /actuator/prometheus 응답이 없거나 수집 대상(Pod)이 없다. 프로세스 다운, Pod 기동 실패, 응답 불가 상태(GC 정지, 스레드 고갈)일 수 있다."
 
       - alert: AuctionEngineRestarted
         expr: changes(process_start_time_seconds{job="auction-engine"}[15m]) > 0
