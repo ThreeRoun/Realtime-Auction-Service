@@ -39,6 +39,21 @@ const REDIS_PORT = Number(process.env.REDIS_PORT) || 6379;
 // 'auction_events' 채널을 구독 중인지 여부 (readiness 판단에 사용)
 let isSubscribed = false;
 
+// 종료 중인지 여부. 종료가 시작되면 readiness를 실패로 바꿔 새 클라이언트를 받지 않는다. 
+let isShuttingDown = false; 
+
+// 종료 과정 설정 (환경변수로 조절 가능)
+// - DRAIN_MS: 종료 신호를 받은 뒤 소켓을 닫기 전까지 기다리는 시간.
+//             쿠버네티스가 이 Pod를 Service 목록에서 빼는 동안 새 접속이 이쪽으로 오지 않게 한다.
+// - BATCH_SIZE / BATCH_INTERVAL_MS: 소켓을 한 번에 닫지 않고 나눠서 닫는 단위와 간격.
+//             모든 클라이언트가 동시에 재접속해 다른 Pod에 부하가 몰리는 것을 막는다.
+// - FORCE_EXIT_MS: 이 시간 안에 정리가 끝나지 않으면 강제 종료.
+//             쿠버네티스의 terminationGracePeriodSeconds(30초)보다 짧아야 한다.
+const SHUTDOWN_DRAIN_MS = Number(process.env.SHUTDOWN_DRAIN_MS) || 5000;
+const SHUTDOWN_BATCH_SIZE = Number(process.env.SHUTDOWN_BATCH_SIZE) || 50;
+const SHUTDOWN_BATCH_INTERVAL_MS = Number(process.env.SHUTDOWN_BATCH_INTERVAL_MS) || 100;
+const SHUTDOWN_FORCE_EXIT_MS = Number(process.env.SHUTDOWN_FORCE_EXIT_MS) || 25000;
+
 // HTTP 서버: 쿠버네티스가 상태를 확인할 헬스 엔드포인트를 제공
 // WebSocket 서버는 이 HTTP 서버 위에 붙어서, 같은 4000번 포트를 함께 씀.
 const server = http.createServer((req, res) => {
@@ -52,7 +67,7 @@ const server = http.createServer((req, res) => {
   // readiness: Redis에 연결되어 있고 채널을 구독 중일 때만 200
   // (Redis가 끊긴 Pod로 새 클라이언트가 붙으면 이벤트를 받지 못하기 때문)
   if(req.url === '/readyz'){
-    const ready = redisSubscriber.status === 'ready' && isSubscribed;
+    const ready = !isShuttingDown && redisSubscriber.status === 'ready' && isSubscribed;
     // 503: 지금은 일을 받을 수 없다는 뜻의 상태 코드
     // 쿠버네티스는 readiness가 200이 아니면 그 Pod로 새 요청을 보내지 않음.  
     res.writeHead(ready ? 200 : 503, { 'Content-Type': 'application/json' });
@@ -311,31 +326,52 @@ wss.on('connection', (ws, req)=>{
   });
 });
 
-// 컨테이너 종료 시 안전한 연결 회수
-const gracefulShutdown = () => {
-  logger.info({event: 'shutdown_start'}, '종료 신호 감지, 리소스 정리 시작');
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const gracefulShutdown = async (signal) => {
+  // 신호가 여러 번 와도 종료 과정은 한 번만 실행한다
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+
+  logger.info({ event: 'shutdown_start', signal, clients: wss.clients.size }, '종료 신호 감지, 리소스 정리 시작');
   clearInterval(interval);
 
-  wss.clients.forEach((client)=>{
-    client.close(1001, '서버가 종료되어 연결을 마칩니다.');
-  });
+  // 정리가 너무 오래 걸리면 강제 종료 (unref: 이 타이머 때문에 프로세스가 살아 있지 않게 함)
+  setTimeout(() => {
+    logger.error({ event: 'shutdown_timeout', timeout_ms: SHUTDOWN_FORCE_EXIT_MS }, '정리 시간 초과, 강제 종료');
+    process.exit(1);
+  }, SHUTDOWN_FORCE_EXIT_MS).unref();
 
-  wss.close(()=>{
-    logger.info({event: 'shutdown_ws_closed'}, 'WebSocket 서버 닫힘');
-    // WebSocket 서버를 닫아도 HTTP 서버는 따로 닫아야 한다
-    server.close(()=>{
-      redisSubscriber.quit().then(()=>{
-        logger.info({event: 'shutdown_complete'}, 'Redis 연결 정상 종료, 서버 종료');
+  // 1) readiness가 실패로 바뀐 상태로 잠시 기다린다.
+  //    그동안 쿠버네티스가 이 Pod를 목록에서 빼서, 재접속하는 클라이언트가 다른 Pod로 가게 된다.
+  await sleep(SHUTDOWN_DRAIN_MS);
+
+  // 2) 소켓을 나눠서 닫는다. (한꺼번에 닫으면 전원이 동시에 재접속해 부하가 몰림)
+  const clients = [...wss.clients];
+  for (let i = 0; i < clients.length; i += SHUTDOWN_BATCH_SIZE) {
+    clients.slice(i, i + SHUTDOWN_BATCH_SIZE).forEach((client) => {
+      client.close(1001, '서버가 종료되어 연결을 마칩니다.');
+    });
+    if (i + SHUTDOWN_BATCH_SIZE < clients.length) {
+      await sleep(SHUTDOWN_BATCH_INTERVAL_MS);
+    }
+  }
+  logger.info({ event: 'shutdown_clients_closed', count: clients.length }, '클라이언트 연결 종료 완료');
+
+  // 3) 서버와 Redis 연결을 정리하고 종료한다.
+  wss.close(() => {
+    logger.info({ event: 'shutdown_ws_closed' }, 'WebSocket 서버 닫힘');
+    // 헬스 체크 등으로 열려 있는 유휴 HTTP 연결 때문에 close가 늦어지지 않도록 먼저 정리
+    server.closeIdleConnections();
+    server.close(() => {
+      redisSubscriber.quit().then(() => {
+        logger.info({ event: 'shutdown_complete' }, 'Redis 연결 정상 종료, 서버 종료');
         process.exit(0);
       });
     });
   });
-
-  // 3초 내에 정리가 안 끝나면 강제 종료
-  setTimeout(()=>{
-    process.exit(1);
-  }, 3000);
 };
 
-process.on('SIGTERM', gracefulShutdown);
-process.on('SIGINT', gracefulShutdown);
+// 로그에 어떤 신호로 종료됐는지 남기기. 
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
