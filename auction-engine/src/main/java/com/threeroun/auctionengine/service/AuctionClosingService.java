@@ -23,13 +23,16 @@ public class AuctionClosingService {
     private final BidRepository bidRepository;
     private final UserRepository userRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final AuctionMetrics metrics;
 
     public AuctionClosingService(ProductRepository productRepository, BidRepository bidRepository,
-                                  UserRepository userRepository, ApplicationEventPublisher eventPublisher) {
+                                  UserRepository userRepository, ApplicationEventPublisher eventPublisher,
+                                  AuctionMetrics metrics) {
         this.productRepository = productRepository;
         this.bidRepository = bidRepository;
         this.userRepository = userRepository;
         this.eventPublisher = eventPublisher;
+        this.metrics = metrics;
     }
 
     // 상품 하나를 상품 ID로 받아 독립된 트랜잭션에서 처리한다 (스케줄러가 여러 상품을 순회할 때
@@ -77,6 +80,7 @@ public class AuctionClosingService {
 
         product.setStatus(winnerId != null ? ProductStatus.SOLD : ProductStatus.UNSOLD);
         eventPublisher.publishEvent(new AuctionClosedEvent(productId, winnerId, finalPrice));
+        metrics.auctionClosed(winnerId != null);
     }
 
     // PENDING -> IN_PROGRESS 전이. 이 상태를 바꾸는 다른 경로(입찰 등)가 없어서 락 없이 처리해도

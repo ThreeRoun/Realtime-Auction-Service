@@ -38,6 +38,16 @@
 유찰이면 `winner_id`/`final_price`가 `null`인 채로 그대로 발행된다 (B는 pass-through라 프론트가
 null 여부로 낙찰/유찰을 구분하면 된다).
 
+## 비즈니스 지표 (Prometheus)
+
+`/actuator/prometheus`가 지금까지 노출하던 건 HTTP 요청 수·응답시간, JVM, HikariCP 같은 범용
+지표뿐이라, 입찰·낙찰이 실제로 얼마나 일어나는지는 알 수 없었다. `AuctionMetrics`가 다음 세
+카운터를 추가로 노출한다 (`BidService.placeBid`/`AuctionClosingService.closeIfExpired`에서 호출):
+
+- `auction_bid_placed_total` — 최고가를 갱신한 유효한 입찰 수
+- `auction_extended_total` — 안티 스나이핑으로 마감이 연장된 횟수
+- `auction_closed_total{result="sold"|"unsold"}` — 마감된 경매 수 (낙찰/유찰 구분)
+
 ## 참고
 
 - 5초 주기는 데모/운영 편의상 정한 값이고 `AuctionScheduler`에서 쉽게 조정 가능.

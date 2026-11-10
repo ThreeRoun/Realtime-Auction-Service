@@ -34,13 +34,16 @@ public class BidService {
     private final BidRepository bidRepository;
     private final UserRepository userRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final AuctionMetrics metrics;
 
     public BidService(ProductRepository productRepository, BidRepository bidRepository,
-                       UserRepository userRepository, ApplicationEventPublisher eventPublisher) {
+                       UserRepository userRepository, ApplicationEventPublisher eventPublisher,
+                       AuctionMetrics metrics) {
         this.productRepository = productRepository;
         this.bidRepository = bidRepository;
         this.userRepository = userRepository;
         this.eventPublisher = eventPublisher;
+        this.metrics = metrics;
     }
 
     // Product row에 비관적 락을 건 채로 "현재가 확인 -> Bid 기록 -> 현재가 갱신 -> (필요시) 마감 연장"을
@@ -96,9 +99,11 @@ public class BidService {
         // 실제 Redis 발행은 AuctionEventListener가 이 트랜잭션 commit 이후에 수행한다.
         if (savedBid.isValid()) {
             eventPublisher.publishEvent(new BidPlacedEvent(productId, amount, bidderId, savedBid.getBidAt()));
+            metrics.bidPlaced();
         }
         if (extended) {
             eventPublisher.publishEvent(new AuctionExtendedEvent(productId, product.getEndAt()));
+            metrics.auctionExtended();
         }
         return new BidResult(savedBid, extended);
     }
