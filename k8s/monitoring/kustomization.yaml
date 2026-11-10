@@ -51,3 +51,13 @@ configMapGenerator:
     namespace: monitoring
     files:
       - datasources.yaml=config/grafana-datasources.yaml
+  - name: grafana-dashboard-provider
+    namespace: monitoring
+    files:
+      - dashboards.yaml=config/grafana-dashboards.yaml
+  # 대시보드를 추가하면 여기에도 파일을 적는다
+  - name: grafana-dashboards
+    namespace: monitoring
+    files:
+      - config/dashboards/auction-engine.json
+      - config/dashboards/k8s-cluster.json

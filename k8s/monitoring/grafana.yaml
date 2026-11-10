@@ -1,4 +1,5 @@
 # Grafana: 지표(Prometheus)와 로그(Loki) 조회. Ingress의 /grafana 경로로 노출한다.
+# 데이터 소스(config/grafana-datasources.yaml)와 대시보드(config/dashboards/*.json)는 레포에서 자동 등록한다.
 # 관리자 계정은 grafana-admin Secret으로 서버에서 직접 만든다 (k8s/README.md 참고)
 apiVersion: v1
 kind: Service
@@ -11,7 +12,7 @@ spec:
   ports:
     - port: 3000
 ---
-# 대시보드/사용자 등 Grafana 자체 데이터(SQLite) 보존용
+# 사용자, UI에서 직접 만든 대시보드 등 Grafana 자체 데이터(SQLite) 보존용
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -84,12 +85,23 @@ spec:
           volumeMounts:
             - name: datasources
               mountPath: /etc/grafana/provisioning/datasources
+            - name: dashboard-provider
+              mountPath: /etc/grafana/provisioning/dashboards
+            # 대시보드 JSON (config/dashboards). PVC(/var/lib/grafana) 바깥 경로에 둔다
+            - name: dashboards
+              mountPath: /var/lib/grafana-dashboards
             - name: data
               mountPath: /var/lib/grafana
       volumes:
         - name: datasources
           configMap:
             name: grafana-datasources
+        - name: dashboard-provider
+          configMap:
+            name: grafana-dashboard-provider
+        - name: dashboards
+          configMap:
+            name: grafana-dashboards
         - name: data
           persistentVolumeClaim:
             claimName: grafana-data
