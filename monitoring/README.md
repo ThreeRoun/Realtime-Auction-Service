@@ -9,6 +9,9 @@ auction-engine ─(15초마다 /actuator/prometheus 긁어감)─▶ Prometheus 
              (지표 노출)                              (수집·저장)      (조회·대시보드)
 ```
 
+> 이 문서는 **로컬 docker compose** 기준입니다. 학교 서버(k3s) 클러스터에서는 같은 스택이 `k8s/monitoring`으로
+> 배포되며, Grafana는 `http://<서버>/grafana`로 접속합니다 - [k8s/README.md](../k8s/README.md#모니터링로깅-k8smonitoring) 참고.
+
 ## 실행 방법
 
 프로젝트 루트에서 기존 서비스 compose 파일과 함께 실행합니다.

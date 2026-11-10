@@ -35,3 +35,14 @@ jobs:
           set -eu
           kubectl kustomize k8s/overlays/prod > rendered.yaml
           docker run --rm -i ghcr.io/yannh/kubeconform:v0.6.7 -strict -summary - < rendered.yaml
+
+      # 모니터링·로깅 스택 매니페스트 + 각 설정 파일 문법 검증
+      - name: Render and validate monitoring manifests
+        run: |
+          set -eu
+          kubectl kustomize k8s/monitoring > rendered-monitoring.yaml
+          docker run --rm -i ghcr.io/yannh/kubeconform:v0.6.7 -strict -summary - < rendered-monitoring.yaml
+          cfg="$PWD/k8s/monitoring/config"
+          docker run --rm -v "$cfg":/c --entrypoint promtool prom/prometheus:v3.0.1 check config /c/prometheus.yml
+          docker run --rm -v "$cfg":/c grafana/loki:3.5.3 -config.file=/c/loki.yaml -verify-config
+          docker run --rm -v "$cfg":/c grafana/alloy:v1.11.0 fmt /c/config.alloy > /dev/null

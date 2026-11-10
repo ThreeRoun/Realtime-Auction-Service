@@ -6,6 +6,8 @@ name: Deploy to school server (baseline)
 #      (학교 방화벽이 외부 인바운드 SSH를 막으므로 서버에서 GitHub로 나가는 연결만 사용)
 #   3) 롤아웃 완료 + 서버 내부 localhost(Ingress)로 스모크 테스트
 #   4) 2~3 중 하나라도 실패하면 배포 직전 이미지로 자동 롤백
+#   5) 모니터링·로깅 스택(k8s/monitoring) 적용 - 별도 job이라 실패해도 앱 롤백과 무관하고,
+#      앱 배포가 실패해도 장애 확인에 필요하므로 계속 적용한다
 
 on:
   push:
@@ -165,4 +167,68 @@ jobs:
                 -o jsonpath="{.spec.template.spec.containers[?(@.name=='$app')].image}" 2>/dev/null || echo "-")
               echo "| $app | \`$img\` |"
             done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # 모니터링·로깅 스택 (Prometheus / Loki / Alloy / Grafana, namespace: monitoring)
+  # - 앱 배포 job과 분리: 여기서 실패해도 앱은 롤백되지 않는다
+  # - 앱 배포가 실패/건너뛰어져도 실행한다 (장애 상황일수록 모니터링이 필요)
+  deploy-monitoring:
+    needs: deploy
+    if: ${{ !cancelled() }}
+    runs-on: [self-hosted, school-server]
+    env:
+      MON_NAMESPACE: monitoring
+      MON_APPS: prometheus loki alloy grafana
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check cluster access
+        run: |
+          set -eu
+          kubeconfig="${KUBECONFIG:-$HOME/.kube/config}"
+          echo "KUBECONFIG=$kubeconfig" >> "$GITHUB_ENV"
+          export KUBECONFIG="$kubeconfig"
+          if ! kubectl -n "$MON_NAMESPACE" get secret grafana-admin > /dev/null; then
+            echo "::error::$MON_NAMESPACE 네임스페이스에 grafana-admin Secret이 없습니다. k8s/README.md의 모니터링 스택 사전 준비를 진행하세요"
+            exit 1
+          fi
+
+      - name: Apply monitoring manifests
+        run: kubectl apply -k k8s/monitoring
+
+      - name: Wait for rollout
+        run: |
+          set -eu
+          for app in $MON_APPS; do
+            kubectl -n "$MON_NAMESPACE" rollout status deploy/"$app" --timeout=300s
+          done
+
+      # Ingress(/grafana) → Grafana 접속 확인 + Prometheus가 경매 엔진 지표를 수집하는지 확인
+      - name: Smoke test
+        run: |
+          set -eu
+          curl --fail --show-error --silent \
+            --connect-timeout 5 --max-time 15 \
+            --retry 10 --retry-delay 5 --retry-connrefused \
+            --output /dev/null \
+            "http://localhost/grafana/api/health"
+          # 엔진이 재시작 중일 수 있으므로 수집 실패는 경고만 남긴다 (배포 실패로 처리하지 않음)
+          up=$(kubectl -n "$MON_NAMESPACE" exec deploy/prometheus -- \
+            wget -qO- 'http://localhost:9090/api/v1/query?query=up%7Bjob%3D%22auction-engine%22%7D' || true)
+          if echo "$up" | grep -q '"1"\]'; then
+            echo "Prometheus: auction-engine 지표 수집 중"
+          else
+            echo "::warning::Prometheus가 auction-engine 지표를 수집하지 못하고 있습니다: $up"
+          fi
+
+      - name: Monitoring summary
+        if: always()
+        run: |
+          {
+            echo "### 모니터링 스택: ${{ job.status }}"
+            echo
+            echo '```'
+            kubectl -n "$MON_NAMESPACE" get pods 2>&1 || true
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

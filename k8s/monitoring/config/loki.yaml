@@ -1,0 +1,41 @@
+# 클러스터용 Loki 설정 - 단일 바이너리 + 로컬 파일시스템(PVC) 저장
+# 이미지 기본 설정(/etc/loki/local-config.yaml)에 보존 기간(7일)을 추가했다.
+# 보존 기간이 없으면 로그가 쌓이기만 해서 PVC(디스크)가 가득 찬다.
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+# 오래된 로그 삭제 (compactor가 retention_period보다 오래된 로그를 지운다)
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  delete_request_store: filesystem
+
+limits_config:
+  retention_period: 168h
+
+analytics:
+  reporting_enabled: false
