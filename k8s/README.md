@@ -1,6 +1,7 @@
 # Kubernetes 배포 구성
 
-`docker-compose.prod.yml`과 같은 구성(경매 엔진 / 실시간 중계 / Frontend / Redis / Postgres)을 Kubernetes로 옮긴 매니페스트.
+경매 서비스(경매 엔진 / 실시간 중계 / Frontend / Redis / Postgres)와 모니터링·로깅·알람 스택을 배포하는 Kubernetes 매니페스트.
+(이전의 서버용 compose 배포는 k3s 전환 후 제거했다. 로컬 개발은 루트의 `docker-compose.yml`을 쓴다)
 단일 노드 k3s(학교 서버)를 기준으로 작성했다.
 
 ## 구조

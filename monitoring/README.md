@@ -130,6 +130,6 @@ docker run --rm -v "$PWD/k8s/monitoring/config":/a --entrypoint amtool \
   조금 바꿔야 합니다 - 다음 단계로 미뤘습니다.
 - Grafana 대시보드(패널 구성)는 아직 없습니다. 위 Explore 쿼리로 우선 데이터가 들어오는지
   확인하고, 그 다음 대시보드 패널로 정리할 예정입니다.
-- 모니터링/알람 스택은 **docker compose 환경에만** 있습니다. k3s 배포 환경에는 아직 Prometheus/Alertmanager가
-  없어서, 운영 서버 알람을 받으려면 같은 규칙 파일을 k8s 매니페스트(또는 kube-prometheus-stack)로 옮겨야 합니다.
+- 서버(k3s)에는 같은 스택이 `k8s/monitoring`으로 배포됩니다. 알람 규칙과 Alertmanager 설정은 같은 파일을 쓰고,
+  지표 수집 설정(`prometheus/prometheus.yml`)만 환경별로 따로 있습니다.
 - Postgres/Redis 자체 지표(exporter)는 수집하지 않습니다. DB 문제는 엔진 쪽 HikariCP 지표로 간접 감지합니다.
