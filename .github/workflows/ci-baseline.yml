@@ -7,6 +7,46 @@ on:
     branches: [baseline]
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      db:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: auction
+          POSTGRES_PASSWORD: auction
+          POSTGRES_DB: auction
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U auction"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      # 동시 입찰 처리(BidServiceConcurrencyTest) 같은 핵심 로직 검증이 지금까지 로컬에서만
+      # 돌고 있었다(이슈 #121) - lint.yml의 auction-engine job은 Checkstyle(스타일)만 본다.
+      - name: Run tests
+        working-directory: auction-engine
+        run: ./gradlew test
+
   build-validate:
     runs-on: ubuntu-latest
     strategy:
