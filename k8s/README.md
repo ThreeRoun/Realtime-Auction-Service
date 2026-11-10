@@ -29,6 +29,7 @@ k8s/
     ├── grafana.yaml         # 조회 UI (PVC 1Gi) + Ingress /grafana
     ├── config/              # 각 도구 설정 파일 (configMapGenerator로 ConfigMap 생성)
     │   ├── rules/           # 알람 규칙 + 단위 테스트 (compose와 공용)
+    │   ├── dashboards/      # Grafana 대시보드 JSON (자동 등록)
     │   └── alertmanager.yml # 알림 라우팅 (compose와 공용)
     └── kustomization.yaml
 ```
@@ -162,8 +163,9 @@ kubectl apply -k .deploy && rm -r .deploy
 
 ```text
 auction-engine     ─┐
-node-exporter      ─┼─(지표)─▶ Prometheus ─(알람 규칙)─▶ Alertmanager ─▶ Discord
-kube-state-metrics ─┘              │
+node-exporter      ─┤
+kube-state-metrics ─┼─(지표)─▶ Prometheus ─(알람 규칙)─▶ Alertmanager ─▶ Discord
+kubelet(cAdvisor)  ─┘              │
 모든 Pod ─(로그, Kubernetes API)─▶ Alloy ─▶ Loki ─┴─▶ Grafana (/grafana)
 ```
 
@@ -173,9 +175,10 @@ kube-state-metrics ─┘              │
 | Alertmanager | 알람 그룹핑/억제 후 Discord 발송 | webhook URL은 `alertmanager-discord` Secret |
 | node-exporter | 서버 CPU/메모리/디스크 지표 | DaemonSet, hostNetwork 미사용(포트 외부 비노출) |
 | kube-state-metrics | Pod 재시작, Pending, replica 준비 상태 등 k8s 객체 상태 지표 | 읽기 전용 ClusterRole |
+| cAdvisor | 컨테이너별 실제 CPU/메모리/네트워크 사용량 | 별도 Pod 없이 kubelet 내장 엔드포인트 수집, 권한은 `nodes/metrics` 읽기만 |
 | Alloy | 모든 네임스페이스의 Pod 로그를 Kubernetes API(`pods/log`)로 읽어 Loki로 전송 | 노드 디스크 마운트 없음, replica 1 |
 | Loki | 로그 저장 | 7일 보존 |
-| Grafana | 지표·로그·알람 조회, 데이터 소스(Prometheus, Loki, Alertmanager) 자동 등록 | `http://<서버>/grafana` |
+| Grafana | 지표·로그·알람 조회, 데이터 소스(Prometheus, Loki, Alertmanager)와 대시보드 자동 등록 | `http://<서버>/grafana` |
 
 수동 적용:
 
@@ -201,6 +204,28 @@ annotations:
 **설정 변경**: `k8s/monitoring/config/`의 파일을 고치면 ConfigMap 이름(해시)이 바뀌어 해당 Pod가 자동으로 재시작된다.
 알람 규칙(`config/rules/`)과 `config/alertmanager.yml`은 로컬 compose도 같은 파일을 마운트해서 쓴다.
 수집 설정(`prometheus.yml`, `config.alloy`)은 환경마다 수집 방식이 달라 compose용(`monitoring/`, `logging/`)과 별개다.
+
+### 대시보드
+
+`config/dashboards/*.json`이 Grafana의 **Dashboards → Realtime Auction** 폴더에 자동 등록된다.
+패널의 기준선(빨간 선)은 알람 기준과 같게 맞춰 두었다.
+
+| 대시보드 | 내용 |
+| --- | --- |
+| `auction-engine` | 인스턴스 수, 요청 수, 5xx 비율, 입찰 응답 시간(p50/95/99), HikariCP 커넥션, JVM 힙/GC/스레드, 에러·경고 로그(Loki) |
+| `클러스터 · 서버` | CrashLoopBackOff/Pending/준비 안 된 replica, Pod 목록(상태·재시작), 컨테이너 대기·종료 사유, requests/limits, 컨테이너별 실제 CPU/메모리(limit 대비)/네트워크 사용량, 서버 CPU/메모리/디스크 |
+
+**수정 방법**: 레포의 JSON이 원본이라 Grafana UI에서는 저장할 수 없다 (`allowUiUpdates: false`, 배포 때마다 덮어쓰기 때문).
+
+1. Grafana에서 대시보드를 편집한다 (저장 대신 아래로)
+2. **Export → Export as JSON**에서 "Export the dashboard to use in another instance"는 **끄고** 복사한다
+3. `config/dashboards/<이름>.json`에 덮어쓰고 커밋한다. 새 대시보드라면 `kustomization.yaml`의 `grafana-dashboards`에도 파일을 추가한다
+
+> 데이터 소스는 대시보드 변수(`$datasource`, `$logs`)로 고르게 되어 있다. 새 패널도 데이터 소스를 `${datasource}`로 둬야
+> 다른 환경에서 데이터 소스 uid가 달라도 동작한다.
+>
+> cAdvisor 지표는 디스크 사용량을 줄이려고 대시보드에 쓰는 4개(CPU, 메모리 working set, 네트워크 송수신)만 남긴다
+> (`config/prometheus.yml`의 `kubelet-cadvisor` job). 다른 지표가 필요하면 그 job의 `metric_relabel_configs`에 추가한다.
 
 ### 알람
 

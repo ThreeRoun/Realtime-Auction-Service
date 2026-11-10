@@ -38,10 +38,23 @@
 유찰이면 `winner_id`/`final_price`가 `null`인 채로 그대로 발행된다 (B는 pass-through라 프론트가
 null 여부로 낙찰/유찰을 구분하면 된다).
 
+## 여러 인스턴스에서 중복 실행 방지 (ShedLock)
+
+k8s 환경에서는 replica가 1개여도 롤링 업데이트 중(`maxSurge: 1`) Pod가 잠깐 2개 겹친다. 그래서
+두 `@Scheduled` 메서드 모두 `@SchedulerLock`(DB `shedlock` 테이블, V4 마이그레이션 기반)으로
+감싸서 한 번에 한 인스턴스에서만 실행되게 한다 (이슈 #100).
+
+- `closeExpiredAuctions`: 원래도 `closeIfExpired`의 비관적 락 덕분에 데이터는 안전했지만, 락이
+  없으면 두 Pod가 같은 후보를 중복 조회/대기하는 낭비가 생긴다.
+- `activatePendingAuctions`: 원래 락이 전혀 없었고, 엔티티를 읽어서 저장하는 방식이라 두 Pod가
+  동시에 실행하면 그 사이 커밋된 입찰 변경(`current_price`, `end_at`)을 예전 값으로 덮어쓸 수
+  있었다. 지금은 조건부 벌크 `UPDATE` 쿼리(`ProductRepository.activatePendingAuctions`)로
+  바꿔서, 락과 무관하게 그 자체로도 이 위험이 없다.
+
 ## 비즈니스 지표 (Prometheus)
 
 `/actuator/prometheus`가 지금까지 노출하던 건 HTTP 요청 수·응답시간, JVM, HikariCP 같은 범용
-지표뿐이라, 입찰·낙찰이 실제로 얼마나 일어나는지는 알 수 없었다. `AuctionMetrics`가 다음 세
+지표뿐이라, 입찰·낙찰이 실제로 얼마나 일어나는지는 알 수 없었다. `AuctionMetrics`가 다음 네
 카운터를 추가로 노출한다 (`BidService.placeBid`/`AuctionClosingService.closeIfExpired`에서 호출):
 
 - `auction_bid_placed_total` — 최고가를 갱신한 유효한 입찰 수

@@ -57,3 +57,29 @@ scrape_configs:
     honor_labels: true
     static_configs:
       - targets: ["kube-state-metrics:8080"]
+
+  # cAdvisor: 컨테이너별 실제 CPU/메모리/네트워크 사용량. 별도 Pod 없이 각 노드 kubelet(:10250)에 내장된 것을 쓴다.
+  # kubelet은 ServiceAccount 토큰으로 인증하고, 권한은 nodes/metrics 읽기만 준다 (prometheus.yaml의 ClusterRole).
+  - job_name: kubelet-cadvisor
+    scheme: https
+    metrics_path: /metrics/cadvisor
+    kubernetes_sd_configs:
+      - role: node
+    authorization:
+      credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+    # k3s의 kubelet 인증서는 클러스터 CA로 서명되고 노드 IP가 들어 있어 그대로 검증된다
+    tls_config:
+      ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_node_name]
+        target_label: node
+    # cAdvisor는 지표 종류가 많아 디스크(4GB 보존)를 빨리 쓰므로 대시보드에 쓰는 것만 남긴다.
+    # (CPU throttling 지표는 CPU limit을 건 컨테이너가 없어 수집하지 않는다)
+    # 컨테이너 지표는 container 라벨이 있는 것만(Pod 단위 합계·pause 컨테이너 제외), 네트워크는 Pod 단위로만 나온다.
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: container_(cpu_usage_seconds_total|memory_working_set_bytes|network_receive_bytes_total|network_transmit_bytes_total)
+        action: keep
+      - source_labels: [__name__, container]
+        regex: container_(cpu|memory).*;
+        action: drop
