@@ -1,0 +1,73 @@
+// 클러스터용 Grafana Alloy 설정: Pod 로그를 Kubernetes API로 읽어 Loki로 보낸다.
+// (로컬 compose용은 logging/alloy/config.alloy - Docker 소켓 기반)
+//
+// 노드 디스크(hostPath)를 마운트하지 않고 API(pods/log)로 읽기 때문에 Alloy는 1개만 띄운다.
+// 여러 개 띄우면 같은 로그를 중복 수집한다.
+
+// 1) 클러스터의 Pod 목록
+discovery.kubernetes "pods" {
+  role = "pod"
+}
+
+// 2) Loki에서 검색할 때 쓸 라벨
+//    service:   Pod의 app 라벨 (auction-engine, realtime-relay, frontend, auction-db, auction-redis ...)
+//               compose 환경의 service 라벨과 같은 이름이라 LogQL을 그대로 쓸 수 있다.
+//               app 라벨이 없는 Pod(k3s의 traefik, coredns 등)는 app.kubernetes.io/name → k8s-app 순으로 대신 쓴다.
+//               (아래 규칙은 뒤에 있을수록 우선, 값이 비어 있으면 건너뜀)
+//    namespace / pod / container: k8s 위치 정보
+discovery.relabel "pods" {
+  targets = discovery.kubernetes.pods.targets
+
+  // 실행 중인 Pod만
+  rule {
+    source_labels = ["__meta_kubernetes_pod_phase"]
+    regex         = "Pending|Succeeded|Failed|Unknown"
+    action        = "drop"
+  }
+
+  rule {
+    source_labels = ["__meta_kubernetes_pod_label_k8s_app"]
+    regex         = "(.+)"
+    target_label  = "service"
+  }
+
+  rule {
+    source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+    regex         = "(.+)"
+    target_label  = "service"
+  }
+
+  rule {
+    source_labels = ["__meta_kubernetes_pod_label_app"]
+    regex         = "(.+)"
+    target_label  = "service"
+  }
+
+  rule {
+    source_labels = ["__meta_kubernetes_namespace"]
+    target_label  = "namespace"
+  }
+
+  rule {
+    source_labels = ["__meta_kubernetes_pod_name"]
+    target_label  = "pod"
+  }
+
+  rule {
+    source_labels = ["__meta_kubernetes_pod_container_name"]
+    target_label  = "container"
+  }
+}
+
+// 3) Pod 로그를 읽어 Loki로 전달
+loki.source.kubernetes "pods" {
+  targets    = discovery.relabel.pods.output
+  forward_to = [loki.write.default.receiver]
+}
+
+// 4) Loki로 전송
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

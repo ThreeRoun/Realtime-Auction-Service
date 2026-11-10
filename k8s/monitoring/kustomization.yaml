@@ -1,0 +1,38 @@
+# 모니터링·로깅 스택 (Prometheus / Loki / Alloy / Grafana) - namespace: monitoring
+# 앱(k8s/overlays/prod)과 따로 적용한다:  kubectl apply -k k8s/monitoring
+#
+# Prometheus의 Pod 조회 권한(Role)은 auction 네임스페이스에 만들어야 해서,
+# kustomize의 namespace 일괄 지정 대신 각 리소스에 namespace를 직접 적었다.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: realtime-auction-service
+      app.kubernetes.io/component: observability
+
+resources:
+  - namespace.yaml
+  - prometheus.yaml
+  - loki.yaml
+  - alloy.yaml
+  - grafana.yaml
+
+# 설정 파일이 바뀌면 ConfigMap 이름(해시)이 바뀌어 해당 Pod가 자동으로 재시작된다
+configMapGenerator:
+  - name: prometheus-config
+    namespace: monitoring
+    files:
+      - config/prometheus.yml
+  - name: loki-config
+    namespace: monitoring
+    files:
+      - config/loki.yaml
+  - name: alloy-config
+    namespace: monitoring
+    files:
+      - config/config.alloy
+  - name: grafana-datasources
+    namespace: monitoring
+    files:
+      - datasources.yaml=config/grafana-datasources.yaml

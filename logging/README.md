@@ -11,6 +11,9 @@ frontend, db.. ┘                    수집      저장     검색·대시보�
 수업에서 다룬 Loki + Promtail + Grafana 구성을 따르되, Promtail이 2026년 3월 2일 지원 종료되어
 후속 수집기인 Grafana Alloy를 사용합니다.
 
+> 이 문서는 **로컬 docker compose** 기준입니다. 학교 서버(k3s) 클러스터에서는 같은 스택이 `k8s/monitoring`으로
+> 배포되며, Grafana는 `http://<서버>/grafana`로 접속합니다 - [k8s/README.md](../k8s/README.md#모니터링로깅-k8smonitoring) 참고.
+
 ## 실행 방법
 
 프로젝트 루트에서 기존 서비스 compose 파일과 함께 실행합니다.
