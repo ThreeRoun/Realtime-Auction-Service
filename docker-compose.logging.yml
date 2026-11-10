@@ -1,0 +1,51 @@
+# 로그 수집·분석 스택 (Loki + Grafana Alloy + Grafana)
+# 기존 서비스 compose 파일과 함께 실행한다:
+#   docker compose -f docker-compose.yml -f docker-compose.logging.yml up -d --build
+
+services:
+  loki:
+    image: grafana/loki:3.5.3
+    container_name: auction-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    volumes:
+      - loki-data:/loki
+
+  alloy:
+    image: grafana/alloy:v1.11.0
+    container_name: auction-alloy
+    restart: unless-stopped
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    ports:
+      - "12345:12345"
+    volumes:
+      - ./logging/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:12.1.1
+    container_name: auction-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+    ports:
+      # frontend가 3000을 쓰므로 Grafana는 3001로 연다
+      - "3001:3000"
+    volumes:
+      - ./logging/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - loki
+
+volumes:
+  loki-data:
+  grafana-data:

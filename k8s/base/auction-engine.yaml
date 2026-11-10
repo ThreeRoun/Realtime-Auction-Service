@@ -1,0 +1,112 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: auction-engine
+spec:
+  selector:
+    app: auction-engine
+  ports:
+    - port: 8080
+---
+# 상품 이미지를 로컬 디스크에 저장하는 구조라 ReadWriteOnce PVC를 붙인다.
+# 여러 노드/여러 replica로 늘리려면 이미지 저장소를 공유 스토리지로 옮겨야 한다.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: product-images
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auction-engine
+spec:
+  # 스케줄러 중복 실행 / 이미지 로컬 저장 문제가 해결되기 전까지는 1개로 운영
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: auction-engine
+  template:
+    metadata:
+      labels:
+        app: auction-engine
+      # 클러스터 Prometheus(k8s/monitoring)가 이 annotation을 보고 지표를 수집한다
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: /actuator/prometheus
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: auction-engine
+          image: ghcr.io/threeroun/auction-engine
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: auction-engine-config
+          env:
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: auction-secret
+                  key: POSTGRES_USER
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: auction-secret
+                  key: POSTGRES_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: auction-secret
+                  key: JWT_SECRET
+          # Spring Boot Actuator probe 그룹 (application.properties 참고)
+          # - startup/liveness: 앱 자체 상태만 확인 → 실패 시 컨테이너 재시작
+          # - readiness: DB 연결 포함 → 실패 시 Service에서 제외 (재시작하지 않음)
+          # DB가 끊기면 DB 헬스체크가 커넥션 타임아웃까지 응답을 붙잡고 있으므로,
+          # timeoutSeconds를 짧게 둬서 응답 지연도 실패로 처리한다.
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 36
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              memory: 1Gi
+          volumeMounts:
+            - name: product-images
+              mountPath: /data/product-images
+      volumes:
+        - name: product-images
+          persistentVolumeClaim:
+            claimName: product-images

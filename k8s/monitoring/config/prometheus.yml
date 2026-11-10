@@ -1,0 +1,40 @@
+# 클러스터용 Prometheus 설정 (로컬 compose용은 monitoring/prometheus/prometheus.yml)
+#
+# auction 네임스페이스에서 아래 annotation이 붙은 Pod를 자동으로 찾아 수집한다.
+#   prometheus.io/scrape: "true"
+#   prometheus.io/port:   "8080"
+#   prometheus.io/path:   /actuator/prometheus
+# Pod IP로 직접 수집하므로 replica가 늘어나도 Pod마다 따로 수집된다.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: kubernetes-pods
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: [auction]
+    relabel_configs:
+      # annotation으로 수집 대상을 고른다
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        regex: "true"
+        action: keep
+      # 실행 중인 Pod만 (종료/실패한 Pod 제외)
+      - source_labels: [__meta_kubernetes_pod_phase]
+        regex: Running
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        regex: (.+)
+        target_label: __metrics_path__
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        target_label: __address__
+      # job 라벨을 Pod의 app 라벨로 바꾼다 → job="auction-engine" (compose 환경과 같은 이름)
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        target_label: job
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
