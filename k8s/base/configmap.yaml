@@ -9,6 +9,10 @@ data:
   PRODUCT_IMAGE_DIR: /data/product-images
   # 컨테이너 메모리 limit 기준으로 힙 크기를 잡는다 (JVM 기본값 25%는 너무 작음)
   JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75
+  # application-prod.properties를 활성화한다 - jwt.secret/DB 계정에 기본값이 없어서,
+  # auction-secret(Secret)의 JWT_SECRET/POSTGRES_USER/POSTGRES_PASSWORD가 빠지면
+  # (이슈 #102) 조용히 기본값을 쓰는 대신 기동 자체가 실패한다.
+  SPRING_PROFILES_ACTIVE: prod
 ---
 apiVersion: v1
 kind: ConfigMap
