@@ -43,6 +43,26 @@ jobs:
           kubectl kustomize k8s/monitoring > rendered-monitoring.yaml
           docker run --rm -i ghcr.io/yannh/kubeconform:v0.6.7 -strict -summary - < rendered-monitoring.yaml
           cfg="$PWD/k8s/monitoring/config"
-          docker run --rm -v "$cfg":/c --entrypoint promtool prom/prometheus:v3.0.1 check config /c/prometheus.yml
+          # --syntax-only: Pod 안에만 있는 ServiceAccount 토큰 파일(cAdvisor 수집용) 존재 검사를 건너뛴다.
+          #   알람 규칙 파일은 lint.yml의 monitoring job에서 따로 검사한다.
+          docker run --rm -v "$cfg":/c --entrypoint promtool prom/prometheus:v3.0.1 check config --syntax-only /c/prometheus.yml
           docker run --rm -v "$cfg":/c grafana/loki:3.5.3 -config.file=/c/loki.yaml -verify-config
           docker run --rm -v "$cfg":/c grafana/alloy:v1.11.0 fmt /c/config.alloy > /dev/null
+          # Grafana 대시보드: JSON 문법, uid 중복, kustomization.yaml 등록 누락 확인
+          python3 - <<'PY'
+          import json, pathlib, sys
+          root = pathlib.Path("k8s/monitoring")
+          kust = (root / "kustomization.yaml").read_text()
+          uids, errors = {}, []
+          for f in sorted((root / "config/dashboards").glob("*.json")):
+              d = json.loads(f.read_text())
+              if not d.get("uid"):
+                  errors.append(f"{f}: uid 없음")
+              elif d["uid"] in uids:
+                  errors.append(f"{f}: uid '{d['uid']}'가 {uids[d['uid']]}와 중복")
+              uids[d.get("uid")] = f.name
+              if f"config/dashboards/{f.name}" not in kust:
+                  errors.append(f"{f}: kustomization.yaml의 grafana-dashboards에 없음")
+          print("\n".join(errors) or f"dashboards OK ({len(uids)})")
+          sys.exit(1 if errors else 0)
+          PY
