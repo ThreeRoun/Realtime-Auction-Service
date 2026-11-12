@@ -23,3 +23,14 @@ frontend/dist/
 
 # Alertmanager 알림 채널 비밀값 (Discord webhook URL 등) - monitoring/README.md 참고
 monitoring/alertmanager/secrets/
+
+# Playwright 테스트 실행 결과
+frontend/failure-results.json
+frontend/playwright-results.json
+failure-results.json
+test-results/
+frontend/test-results/
+frontend/playwright-report/
+
+# Claude API 연결 확인용 임시 스크립트
+test_claude_api.py
