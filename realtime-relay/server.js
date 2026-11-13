@@ -20,16 +20,19 @@ const logger = pino({
 
   timestamp: pino.stdTimeFunctions.isoTime, // ISO 형식으로 시간 남김
 
+  // 메시지 필드 이름: 기본값 msg-> message (경매 엔진 logstasg 형식과 통일)
+  messageKey: 'message',
+
   formatters: {
     // pino는 기본으로 레벨을 숫자(info=30, warn=40)로 남김
     // 문자열("info", "warn")로 바꿔야 Grafana가 로그 레벨을 자동으로 인식해서 색을 구분해줌. 
-    level: (label) => ({ level: label }),
+    level: (label) => ({ level: label.toUpperCase() }),
   },
 });
 
 // 모든 로그는 console.log() 대신 logger.레벨({ event: '로그 종류', ...추가 정보}, '사람이 읽을 메시지'); 로 변경
 // 첫 번째 인자(객체): 그라파나에서 검색 및 집계에 쓸 필드. 특히 event 필드가 핵심으로, 어떤 이벤트인지 구분하는 용도로 쓰임.
-// 두 번째 인자(문자열): 사람이 읽을 메시지. msg 필드로 들어감. 
+// 두 번째 인자(문자열): 사람이 읽을 메시지. message 필드로 들어감. 
 
 
 const PORT = process.env.PORT || 4000;
