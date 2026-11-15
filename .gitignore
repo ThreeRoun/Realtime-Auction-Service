@@ -34,3 +34,12 @@ frontend/playwright-report/
 
 # Claude API 연결 확인용 임시 스크립트
 test_claude_api.py
+# API 키 등 로컬 비밀값 (예: Claude API 키)
+.env
+*.env
+# 에디터 로컬 히스토리 확장이 .env 같은 파일의 스냅샷까지 복사해 둔다
+.history/
+# AI 모니터 로컬 실행 결과/가상환경
+.venv/
+__pycache__/
+monitoring/ai-monitor/output/

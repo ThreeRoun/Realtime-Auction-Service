@@ -76,28 +76,31 @@ test("실시간 입찰 이벤트가 상품 현재가에 반영된다", async ({ 
     });
   });
 
-  let sendBidEvent!: () => void;
-  const socketReady = new Promise<void>((resolve) => {
-    sendBidEvent = resolve;
-  });
+  
+let sendBidEvent: (() => void) | undefined;
 
-  await page.routeWebSocket(/scope=lobby/, (ws) => {
-    ws.onMessage(() => {});
-    sendBidEvent = () => {
-      ws.send(JSON.stringify({
+await page.routeWebSocket(/scope=lobby/, (ws) => {
+  ws.onMessage(() => {});
+
+  sendBidEvent = () => {
+    ws.send(
+      JSON.stringify({
         event: "bid_placed",
         product_id: "test-product-1",
-        current_price: 150000
-      }));
-    };
-    void socketReady;
-  });
+        current_price: 150000,
+      })
+    );
+  };
+});
+
 
   await page.goto("http://localhost:5173/");
 
   await expect(page.getByText("현재가: 120,000원")).toBeVisible();
 
-  sendBidEvent();
+  await expect.poll(() => Boolean(sendBidEvent)).toBe(true);
+
+  sendBidEvent!();
 
   await expect(page.getByText("현재가: 150,000원")).toBeVisible();
 });
