@@ -20,12 +20,13 @@ const logger = pino({
 
   timestamp: pino.stdTimeFunctions.isoTime, // ISO 형식으로 시간 남김
 
-  // 메시지 필드 이름: 기본값 msg-> message (경매 엔진 logstasg 형식과 통일)
+  // 메시지 필드 이름: 기본값 msg-> message (경매 엔진 logstash 형식과 통일)
   messageKey: 'message',
 
   formatters: {
     // pino는 기본으로 레벨을 숫자(info=30, warn=40)로 남김
-    // 문자열("info", "warn")로 바꿔야 Grafana가 로그 레벨을 자동으로 인식해서 색을 구분해줌. 
+    // 대문자 문자열(INFO, WARN)로 바꿔서 경매 엔진과 같은 형식으로 맞춤.
+    // (문자열이어야 Grafana가 로그 레벨을 자동으로 인식해서 색을 구분해줌)
     level: (label) => ({ level: label.toUpperCase() }),
   },
 });
