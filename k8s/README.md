@@ -114,6 +114,15 @@ kubectl -n monitoring create secret generic alertmanager-discord \
 
 > URL을 바꾼 뒤에는 `kubectl -n monitoring rollout restart deploy/alertmanager`로 반영한다.
 
+트리아지 봇의 Claude 분석에 쓸 Anthropic API 키도 Secret으로 만든다 (선택).
+이 Secret이 없으면 봇은 분석 없이 알람 요약, Runbook 링크, 상태 조회 결과만 게시한다.
+자세한 내용은 [monitoring/triage-bot/README.md](../monitoring/triage-bot/README.md#서버-설정)를 본다.
+
+```bash
+read -rs ANTHROPIC_KEY && kubectl -n monitoring create secret generic triage-bot-anthropic \
+  --from-literal=api-key="$ANTHROPIC_KEY"; unset ANTHROPIC_KEY
+```
+
 ## 배포
 
 ### 자동 배포 (CI)
@@ -180,7 +189,7 @@ kubelet(cAdvisor)  ─┘              │
 | Alloy | 모든 네임스페이스의 Pod 로그를 Kubernetes API(`pods/log`)로 읽어 Loki로 전송 | 노드 디스크 마운트 없음, replica 1 |
 | Loki | 로그 저장 | 7일 보존 |
 | Grafana | 지표·로그·알람 조회, 데이터 소스(Prometheus, Loki, Alertmanager)와 대시보드 자동 등록 | `http://<서버>/grafana` |
-| triage-bot | critical 알람을 받아 트리아지 결과를 Discord에 게시 ([monitoring/triage-bot](../monitoring/triage-bot/README.md)) | 기존 Discord 알람과 별도 경로, 현재는 알람 요약 + Runbook 링크 |
+| triage-bot | critical 알람을 받아 트리아지 결과를 Discord에 게시 ([monitoring/triage-bot](../monitoring/triage-bot/README.md)) | 기존 Discord 알람과 별도 경로, Claude 분석 결과(API 키는 `triage-bot-anthropic` Secret) + 상태 조회 + Runbook 링크 |
 
 수동 적용:
 

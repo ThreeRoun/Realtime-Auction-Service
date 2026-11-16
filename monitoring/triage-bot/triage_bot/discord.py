@@ -17,7 +17,7 @@ from .analyzer import Analysis
 log = logging.getLogger(__name__)
 
 DESCRIPTION_LIMIT = 4000     # Discord embed description 최대 4096자
-COLOR = {"pending": 0x5865F2, "ok": 0x5865F2, "failed": 0x99AAB5}
+COLOR = {"ok": 0xF0B232, "disabled": 0x5865F2, "failed": 0x99AAB5}
 USER_AGENT = "triage-bot (Realtime-Auction-Service)"
 
 
@@ -25,9 +25,32 @@ class DiscordError(RuntimeError):
     pass
 
 
+CONFIDENCE = {"high": "높음", "medium": "보통", "low": "낮음"}
+
+
+def _claude_lines(analysis: Analysis) -> list[str]:
+    finding = analysis.claude.finding
+    lines = [f"**판단** {finding.summary}",
+             f"**추정 원인** (확신도 {CONFIDENCE.get(finding.confidence, finding.confidence)}) {finding.likely_cause}"]
+    for title, items in (("근거", finding.evidence), ("권장 조치 (Runbook)", finding.actions),
+                         ("사람이 확인할 것", finding.human_checks)):
+        if items:
+            lines += ["", f"**{title}**"] + [f"• {item}" for item in items]
+    return lines
+
+
+def _footer(job: Job, analysis: Analysis) -> str:
+    footer = f"triage-bot · job {job.job_id}"
+    result = analysis.claude
+    if result:
+        footer += (f" · {result.model} · 도구 {result.tool_calls}회 · {result.seconds:.0f}초"
+                   " · AI 분석이므로 조치 전에 확인하세요")
+    return footer
+
+
 def build_message(job: Job, analysis: Analysis) -> dict:
-    lines = [analysis.summary, ""]
-    lines += [f"• {d}" for d in analysis.details]
+    lines = _claude_lines(analysis) if analysis.claude else [analysis.summary]
+    lines += ["", "**알람**"] + [f"• {d}" for d in analysis.details]
     if analysis.runbooks:
         lines.append("")
         lines += [f"📘 [{name} Runbook]({url})" for name, url in sorted(analysis.runbooks.items())]
@@ -46,8 +69,8 @@ def build_message(job: Job, analysis: Analysis) -> dict:
         "embeds": [{
             "title": f"🔎 트리아지: {job.title}",
             "description": description,
-            "color": COLOR.get(analysis.status, COLOR["pending"]),
-            "footer": {"text": f"triage-bot · job {job.job_id}"},
+            "color": COLOR.get(analysis.status, COLOR["disabled"]),
+            "footer": {"text": _footer(job, analysis)},
         }],
     }
 
