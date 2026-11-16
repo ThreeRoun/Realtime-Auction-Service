@@ -1,0 +1,105 @@
+# 장애 트리아지 봇 (monitoring/triage-bot): Alertmanager의 critical 알람을 webhook으로 받아 Discord에 게시한다.
+# 기존 Alertmanager → Discord 알림과는 별도 경로라(continue: true) 봇이 죽어도 원래 알림은 그대로 간다.
+apiVersion: v1
+kind: Service
+metadata:
+  name: triage-bot
+  namespace: monitoring
+spec:
+  selector:
+    app: triage-bot
+  ports:
+    - port: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: triage-bot
+  namespace: monitoring
+spec:
+  # 중복 제거/일일 상한 상태를 메모리에 두므로 1개만 띄운다
+  replicas: 1
+  selector:
+    matchLabels:
+      app: triage-bot
+  template:
+    metadata:
+      labels:
+        app: triage-bot
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+    spec:
+      # 아직 k8s API를 쓰지 않으므로 토큰을 마운트하지 않는다 (조회 도구 단계에서 읽기 전용 권한과 함께 추가)
+      automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: triage-bot
+          image: ghcr.io/threeroun/triage-bot
+          env:
+            - name: DISCORD_WEBHOOK_URL_FILE
+              value: /etc/triage-bot/discord/discord-webhook-url
+            - name: COOLDOWN_MINUTES
+              value: "30"
+            - name: DAILY_LIMIT
+              value: "20"
+            - name: TARGET_SEVERITIES
+              value: critical
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+          volumeMounts:
+            # Alertmanager와 같은 Discord webhook Secret (같은 채널에 게시)
+            - name: discord
+              mountPath: /etc/triage-bot/discord
+              readOnly: true
+      volumes:
+        - name: discord
+          secret:
+            secretName: alertmanager-discord
+            optional: true
+---
+# 봇에는 Alertmanager(알람 전송)와 Prometheus(지표 수집)만 접근할 수 있다.
+# 나중에 Claude API 호출 비용이 드는 엔드포인트라, 클러스터 안의 다른 Pod가 임의로 호출하지 못하게 막는다.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: triage-bot
+  namespace: monitoring
+spec:
+  podSelector:
+    matchLabels:
+      app: triage-bot
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: alertmanager
+        - podSelector:
+            matchLabels:
+              app: prometheus
+      ports:
+        - port: 8080

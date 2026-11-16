@@ -15,6 +15,13 @@ route:
   group_interval: 5m
   repeat_interval: 4h
   routes:
+    # critical 알람은 트리아지 봇에도 보낸다. continue: true라서 아래 Discord 경로로도 그대로 간다.
+    # (로컬 compose 스택에는 봇이 없어 이 전송은 실패 로그만 남는다 - Discord 알림에는 영향 없음)
+    - matchers: [severity="critical"]
+      receiver: triage-bot
+      continue: true
+      group_wait: 10s
+      repeat_interval: 1h
     - matchers: [severity="critical"]
       receiver: discord
       group_wait: 10s
@@ -46,7 +53,9 @@ receivers:
 
           {{ end -}}
 
-    # --- 추가 예정: 장애 트리아지 봇 (critical만 보내려면 route에 별도 receiver로 분리) ---
-    # webhook_configs:
-    #   - url: http://incident-bot:8080/alerts
-    #     send_resolved: true
+  # 장애 트리아지 봇 (k8s/monitoring/triage-bot.yaml). 해소(resolved)는 Discord 알림으로 충분해서 보내지 않는다.
+  - name: triage-bot
+    webhook_configs:
+      - url: http://triage-bot:8080/alerts
+        send_resolved: false
+        max_alerts: 10

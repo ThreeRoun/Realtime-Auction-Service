@@ -1,7 +1,7 @@
 name: Deploy to school server (baseline)
 
 # baseline 브랜치에 PR이 머지(=push)되면:
-#   1) 3개 서비스 이미지를 빌드해 GHCR에 태그(커밋 SHA + baseline-latest)로 push
+#   1) 서비스 이미지 3개 + 트리아지 봇 이미지를 빌드해 GHCR에 태그(커밋 SHA + baseline-latest)로 push
 #   2) 학교 VDI에 설치된 self-hosted runner가 k3s 클러스터에 커밋 SHA 이미지로 배포
 #      (학교 방화벽이 외부 인바운드 SSH를 막으므로 서버에서 GitHub로 나가는 연결만 사용)
 #   3) 롤아웃 완료 + 서버 내부 localhost(Ingress)로 스모크 테스트
@@ -34,7 +34,16 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [auction-engine, realtime-relay, frontend]
+        include:
+          - service: auction-engine
+            context: ./auction-engine
+          - service: realtime-relay
+            context: ./realtime-relay
+          - service: frontend
+            context: ./frontend
+          # 장애 트리아지 봇 - 앱이 아니라 모니터링 스택(deploy-monitoring)에서 배포한다
+          - service: triage-bot
+            context: ./monitoring/triage-bot
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -49,7 +58,7 @@ jobs:
       - name: Build and push ${{ matrix.service }}
         uses: docker/build-push-action@v6
         with:
-          context: ./${{ matrix.service }}
+          context: ${{ matrix.context }}
           push: true
           tags: |
             ${{ env.IMAGE_REGISTRY }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}
@@ -179,7 +188,7 @@ jobs:
     runs-on: [self-hosted, school-server]
     env:
       MON_NAMESPACE: monitoring
-      MON_APPS: prometheus alertmanager kube-state-metrics loki alloy grafana
+      MON_APPS: prometheus alertmanager kube-state-metrics loki alloy grafana triage-bot
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -199,8 +208,33 @@ jobs:
             echo "::warning::alertmanager-discord Secret이 없어 Discord 알림이 발송되지 않습니다. k8s/README.md 참고"
           fi
 
-      - name: Apply monitoring manifests
-        run: kubectl apply -k k8s/monitoring
+      # 트리아지 봇 이미지(GHCR private)를 받기 위한 pull Secret을 auction 네임스페이스에서 복사한다
+      # (서버에서 따로 만들 필요 없이, ghcr-secret PAT를 갱신하면 다음 배포 때 같이 반영된다)
+      - name: Sync GHCR pull secret
+        run: |
+          set -eu
+          dockercfg="$RUNNER_TEMP/dockerconfig.json"
+          trap 'rm -f "$dockercfg"' EXIT
+          kubectl -n auction get secret ghcr-secret -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d > "$dockercfg"
+          kubectl -n "$MON_NAMESPACE" create secret generic ghcr-secret \
+            --type=kubernetes.io/dockerconfigjson --from-file=.dockerconfigjson="$dockercfg" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      # 앱 배포와 같은 방식: 임시 overlay로 트리아지 봇 이미지 태그만 커밋 SHA로 바꿔서 적용
+      - name: Apply monitoring manifests (${{ env.IMAGE_TAG }})
+        run: |
+          set -eu
+          mkdir -p .deploy-monitoring
+          {
+            echo "apiVersion: kustomize.config.k8s.io/v1beta1"
+            echo "kind: Kustomization"
+            echo "resources:"
+            echo "  - ../k8s/monitoring"
+            echo "images:"
+            echo "  - name: $IMAGE_REGISTRY/triage-bot"
+            echo "    newTag: \"$IMAGE_TAG\""
+          } > .deploy-monitoring/kustomization.yaml
+          kubectl apply -k .deploy-monitoring
 
       - name: Wait for rollout
         run: |
