@@ -61,3 +61,4 @@ groups:
         annotations:
           summary: "{{ $labels.namespace }}/{{ $labels.statefulset }} 준비되지 않은 replica {{ $value }}개"
           description: "auction-db(Postgres)가 Ready가 아니면 모든 API가 실패한다. kubectl -n {{ $labels.namespace }} describe pod 로 확인한다."
+          runbook_url: "https://github.com/ThreeRoun/Realtime-Auction-Service/blob/baseline/docs/runbooks/KubeStatefulSetReplicasUnavailable.md"

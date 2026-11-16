@@ -41,6 +41,7 @@ receivers:
           {{ range .Alerts -}}
           {{ if eq .Status "firing" }}🔴{{ else }}✅{{ end }} **{{ .Annotations.summary }}**
           {{ .Annotations.description }}
+          {{ if .Annotations.runbook_url }}📘 [Runbook]({{ .Annotations.runbook_url }}){{ "\n" }}{{ end -}}
           시작: {{ .StartsAt.Local.Format "2006-01-02 15:04:05" }}{{ if eq .Status "resolved" }} / 해소: {{ .EndsAt.Local.Format "2006-01-02 15:04:05" }}{{ end }}
 
           {{ end -}}

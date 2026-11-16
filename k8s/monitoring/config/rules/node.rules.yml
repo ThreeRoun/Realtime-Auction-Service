@@ -35,6 +35,7 @@ groups:
         annotations:
           summary: "디스크 여유 {{ $value | humanizePercentage }} - 곧 가득 참 ({{ $labels.node }}:{{ $labels.mountpoint }})"
           description: "디스크가 가득 차면 DB 쓰기가 실패해 입찰이 실패한다. 즉시 공간을 확보한다."
+          runbook_url: "https://github.com/ThreeRoun/Realtime-Auction-Service/blob/baseline/docs/runbooks/NodeDiskSpaceCritical.md"
 
       # 지금 추세(최근 6시간)대로면 24시간 안에 가득 차는 경우 - 여유가 많을 때 오탐을 막기 위해 40% 미만일 때만
       - alert: NodeDiskWillFillIn24h

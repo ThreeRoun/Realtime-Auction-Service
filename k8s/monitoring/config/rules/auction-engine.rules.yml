@@ -30,6 +30,7 @@ groups:
         annotations:
           summary: "auction-engine 응답 가능한 인스턴스 없음"
           description: "1분 이상 /actuator/prometheus 응답이 없거나 수집 대상(Pod)이 없다. 프로세스 다운, Pod 기동 실패, 응답 불가 상태(GC 정지, 스레드 고갈)일 수 있다."
+          runbook_url: "https://github.com/ThreeRoun/Realtime-Auction-Service/blob/baseline/docs/runbooks/AuctionEngineDown.md"
 
       - alert: AuctionEngineRestarted
         expr: changes(process_start_time_seconds{job="auction-engine"}[15m]) > 0
@@ -58,6 +59,7 @@ groups:
         annotations:
           summary: "API 5xx 비율 {{ $value | humanizePercentage }} (기준 5%)"
           description: "전체 API 요청 중 5xx 응답 비율이 2분 이상 5%를 넘었다."
+          runbook_url: "https://github.com/ThreeRoun/Realtime-Auction-Service/blob/baseline/docs/runbooks/AuctionEngineHigh5xxRate.md"
 
       - alert: BidEndpoint5xxRate
         expr: |
@@ -75,6 +77,7 @@ groups:
         annotations:
           summary: "입찰 API 5xx 비율 {{ $value | humanizePercentage }} (기준 2%)"
           description: "POST /api/bids 5xx가 1분 이상 2%를 넘었다. 입찰 실패는 곧바로 사용자 손실이므로 전체 API보다 기준을 낮게 잡았다. DB 락 경합/커넥션 고갈 알람을 같이 확인한다."
+          runbook_url: "https://github.com/ThreeRoun/Realtime-Auction-Service/blob/baseline/docs/runbooks/BidEndpoint5xxRate.md"
 
       - alert: BidEndpointLatencyHigh
         expr: |
@@ -112,6 +115,7 @@ groups:
         annotations:
           summary: "DB 커넥션 획득 타임아웃 발생 (최근 5분 {{ $value | humanize }}건)"
           description: "HikariCP 풀에서 커넥션을 얻지 못해 요청이 실패했다. DB 다운, 긴 트랜잭션, 풀 크기 부족을 확인한다."
+          runbook_url: "https://github.com/ThreeRoun/Realtime-Auction-Service/blob/baseline/docs/runbooks/DbConnectionAcquireTimeout.md"
 
       - alert: DbConnectionPoolSaturated
         expr: |

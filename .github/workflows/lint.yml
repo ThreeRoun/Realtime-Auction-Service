@@ -34,6 +34,12 @@ jobs:
           docker run --rm -v "$PWD/k8s/monitoring/config":/a --entrypoint amtool \
             prom/alertmanager:v0.28.1 check-config /a/alertmanager.yml
 
+      # critical 알람마다 Runbook(docs/runbooks/<알람명>.md)이 있고, 알람 규칙과 내용이 맞는지
+      - name: Check runbooks
+        run: |
+          docker run --rm -v "$PWD":/w -w /w python:3.12-slim \
+            sh -c 'pip install --quiet --root-user-action=ignore pyyaml && python .github/scripts/check_runbooks.py'
+
   auction-engine:
     runs-on: ubuntu-latest
     steps:
