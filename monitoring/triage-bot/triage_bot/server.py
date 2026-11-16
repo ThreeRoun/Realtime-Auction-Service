@@ -22,6 +22,7 @@ from .analyzer import analyze
 from .config import Config
 from .discord import DiscordClient, DiscordError, build_message
 from .metrics import Metrics
+from .tools import Toolbox
 
 log = logging.getLogger("triage_bot")
 MAX_BODY_BYTES = 1024 * 1024
@@ -44,8 +45,9 @@ class JsonFormatter(logging.Formatter):
 
 
 class TriageBot:
-    def __init__(self, config: Config, discord: DiscordClient | None = None):
+    def __init__(self, config: Config, discord: DiscordClient | None = None, toolbox: Toolbox | None = None):
         self.config = config
+        self.toolbox = toolbox or Toolbox(config.prometheus_url, config.loki_url, config.runbook_dir)
         self.metrics = Metrics()
         self.gate = dedup.Gate(timedelta(minutes=config.cooldown_minutes), config.daily_limit)
         self.discord = discord or DiscordClient(config.discord_webhook_url_file)
@@ -83,7 +85,7 @@ class TriageBot:
         started = time.monotonic()
         fields = {"job": job.job_id, "alert": job.title}
         try:
-            message = build_message(job, analyze(job))
+            message = build_message(job, analyze(job, self.toolbox))
             if self.config.dry_run:
                 log.info("dry-run: Discord 게시 생략", extra={"fields": {**fields, "message": message}})
             else:

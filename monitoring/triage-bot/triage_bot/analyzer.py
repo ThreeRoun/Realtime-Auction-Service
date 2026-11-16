@@ -1,7 +1,10 @@
-"""알람 분석. 지금은 수신 내용과 Runbook 링크만 정리한다 (Claude 분석은 다음 단계에서 이 자리에 붙인다)."""
+"""알람 분석. 지금은 수신 내용, Runbook 링크, 정해진 상태 조회 결과를 정리한다
+(Claude 분석은 다음 단계에서 이 자리에 붙인다)."""
 from dataclasses import dataclass, field
 
+from . import snapshot
 from .alerts import KST, Job
+from .tools import Toolbox
 
 
 @dataclass(frozen=True)
@@ -9,10 +12,11 @@ class Analysis:
     status: str                       # "pending" (분석 기능 없음) / 이후 "ok", "failed"
     summary: str
     details: list[str] = field(default_factory=list)
-    runbooks: dict[str, str] = field(default_factory=dict)   # 알람명 -> URL
+    runbooks: dict[str, str] = field(default_factory=dict)          # 알람명 -> URL
+    snapshot: list[tuple[str, str]] = field(default_factory=list)   # (제목, 조회 결과)
 
 
-def analyze(job: Job) -> Analysis:
+def analyze(job: Job, toolbox: Toolbox | None = None) -> Analysis:
     details = []
     runbooks = {}
     for alert in job.alerts:
@@ -26,4 +30,5 @@ def analyze(job: Job) -> Analysis:
         summary="알람을 수신했습니다. 자동 분석 기능은 준비 중이라 Runbook의 확인 절차를 따라 주세요.",
         details=details,
         runbooks=runbooks,
+        snapshot=snapshot.collect(job, toolbox) if toolbox else [],
     )

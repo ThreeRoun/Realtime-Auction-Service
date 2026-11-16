@@ -31,9 +31,15 @@ def build_message(job: Job, analysis: Analysis) -> dict:
     if analysis.runbooks:
         lines.append("")
         lines += [f"📘 [{name} Runbook]({url})" for name, url in sorted(analysis.runbooks.items())]
+    for title, result in analysis.snapshot:
+        # 결과 안에 ``` 가 있으면 코드 블록이 깨지므로 바꾼다
+        lines += ["", f"**{title}** (자동 조회)", "```", result.replace("```", "'''"), "```"]
     description = "\n".join(lines)
     if len(description) > DESCRIPTION_LIMIT:
-        description = description[:DESCRIPTION_LIMIT - 1] + "…"
+        description = description[:DESCRIPTION_LIMIT - 6]
+        if description.count("```") % 2:      # 잘린 코드 블록은 닫아 준다
+            description += "\n```"
+        description += "\n…"
     return {
         "username": "triage-bot",
         "allowed_mentions": {"parse": []},

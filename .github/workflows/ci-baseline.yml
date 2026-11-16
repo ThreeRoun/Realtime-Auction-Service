@@ -54,12 +54,17 @@ jobs:
         include:
           - service: auction-engine
             context: ./auction-engine
+            file: ./auction-engine/Dockerfile
           - service: realtime-relay
             context: ./realtime-relay
+            file: ./realtime-relay/Dockerfile
           - service: frontend
             context: ./frontend
+            file: ./frontend/Dockerfile
           - service: triage-bot
-            context: ./monitoring/triage-bot
+            # Runbook(docs/runbooks)을 이미지에 넣기 위해 레포 루트를 컨텍스트로 쓴다
+            context: .
+            file: ./monitoring/triage-bot/Dockerfile
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -68,6 +73,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
           push: false
           tags: ${{ matrix.service }}:pr-${{ github.event.pull_request.number }}
 
