@@ -32,8 +32,14 @@ def _compact(line: str) -> str:
         return line.strip()
     level = entry.get("level") or entry.get("severity") or ""
     message = entry.get("message") or entry.get("msg") or ""
-    text = f"{level} {message}".strip() or line.strip()
-    stack = entry.get("stack_trace") or entry.get("error") or ""
+    # relay(pino)는 로그 종류를 event 필드에 남긴다 (예: redis_error)
+    event = entry.get("event")
+    prefix = f"[{event}] " if isinstance(event, str) and event else ""
+    text = f"{level} {prefix}{message}".strip() or line.strip()
+    # 상세 원인: 엔진(logstash)은 stack_trace, relay(pino)는 err(문자열, 또는 Error를 넘기면 객체)
+    stack = entry.get("stack_trace") or entry.get("error") or entry.get("err") or ""
+    if isinstance(stack, dict):
+        stack = stack.get("stack") or stack.get("message") or json.dumps(stack, ensure_ascii=False)
     if stack:
         lines = str(stack).strip().splitlines()
         text += f" | {_clip(lines[0].strip(), 120)}"
@@ -41,6 +47,10 @@ def _compact(line: str) -> str:
         causes = [l.strip() for l in lines[1:] if l.strip().startswith("Caused by:")]
         if causes:
             text += f" | {_clip(causes[-1], 150)}"
+    # relay는 err 없이 reason만 남기는 경우도 있다 (예: server_error, reason=port_in_use)
+    reason = entry.get("reason")
+    if isinstance(reason, str) and reason:
+        text += f" | reason={_clip(reason, 100)}"
     return text
 
 
