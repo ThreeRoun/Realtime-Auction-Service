@@ -32,7 +32,13 @@ Alertmanager의 critical 알람을 받아 읽기 전용 조회 도구로 현재 
   auction-engine(Spring Boot, replica 1 고정, 입찰은 DB 행 비관적 락), auction-db(PostgreSQL StatefulSet, 백업 없음),
   auction-redis, realtime-relay, frontend.
 - 모니터링은 monitoring 네임스페이스(Prometheus, Loki, Alertmanager, Grafana)에 있다.
-- 엔진 로그는 JSON(level, message, stack_trace)이다. Hikari 커넥션 풀은 기본 10개, 획득 대기 30초.
+- 서비스 연결: auction-engine → auction-redis(auction_events 채널로 입찰/연장/종료 이벤트 발행) → realtime-relay(구독)
+  → 브라우저(WebSocket). 그래서 Redis가 멈추면 엔진과 relay 양쪽에 에러가 난다.
+  여러 서비스에서 동시에 에러가 나면 공통으로 의존하는 대상(Redis, DB)부터 확인한다.
+- 로그는 모두 JSON이다. 엔진: level, message, 예외는 stack_trace.
+  relay: level, message, 로그 종류는 event(예: redis_error), 에러 내용은 err, 일부는 reason.
+  예: {namespace="auction", service="realtime-relay"} | json | level="ERROR"
+- Hikari 커넥션 풀은 기본 10개, 획득 대기 30초.
 - 배포 이미지 태그는 커밋 SHA다. 이미지가 직전과 같은데 새 revision이 생겼다면 설정(환경변수, 리소스 등)만 바꾼 배포다.
 
 ## 진행 방법
