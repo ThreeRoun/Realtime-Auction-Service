@@ -27,6 +27,7 @@ k8s/
     ├── loki.yaml            # 로그 저장 (PVC 5Gi, 7일 보존)
     ├── alloy.yaml           # Pod 로그 수집 → Loki
     ├── grafana.yaml         # 조회 UI (PVC 1Gi) + Ingress /grafana
+    ├── triage-bot.yaml      # 장애 트리아지 봇 (critical 알람 → Discord, monitoring/triage-bot)
     ├── config/              # 각 도구 설정 파일 (configMapGenerator로 ConfigMap 생성)
     │   ├── rules/           # 알람 규칙 + 단위 테스트 (compose와 공용)
     │   ├── dashboards/      # Grafana 대시보드 JSON (자동 등록)
@@ -179,6 +180,7 @@ kubelet(cAdvisor)  ─┘              │
 | Alloy | 모든 네임스페이스의 Pod 로그를 Kubernetes API(`pods/log`)로 읽어 Loki로 전송 | 노드 디스크 마운트 없음, replica 1 |
 | Loki | 로그 저장 | 7일 보존 |
 | Grafana | 지표·로그·알람 조회, 데이터 소스(Prometheus, Loki, Alertmanager)와 대시보드 자동 등록 | `http://<서버>/grafana` |
+| triage-bot | critical 알람을 받아 트리아지 결과를 Discord에 게시 ([monitoring/triage-bot](../monitoring/triage-bot/README.md)) | 기존 Discord 알람과 별도 경로, 현재는 알람 요약 + Runbook 링크 |
 
 수동 적용:
 

@@ -1,5 +1,5 @@
 # 모니터링·로깅·알람 스택 - namespace: monitoring
-#   Prometheus / Alertmanager / node-exporter / kube-state-metrics / Loki / Alloy / Grafana
+#   Prometheus / Alertmanager / node-exporter / kube-state-metrics / Loki / Alloy / Grafana / triage-bot
 # 앱(k8s/overlays/prod)과 따로 적용한다:  kubectl apply -k k8s/monitoring
 #
 # Prometheus의 Pod 조회 권한(Role)은 auction 네임스페이스에 만들어야 해서,
@@ -21,6 +21,12 @@ resources:
   - loki.yaml
   - alloy.yaml
   - grafana.yaml
+  - triage-bot.yaml
+
+# 직접 빌드하는 이미지. CI 배포(deploy-baseline.yml)는 커밋 SHA 태그로 바꿔서 적용한다
+images:
+  - name: ghcr.io/threeroun/triage-bot
+    newTag: baseline-latest
 
 # 설정 파일이 바뀌면 ConfigMap 이름(해시)이 바뀌어 해당 Pod가 자동으로 재시작된다
 configMapGenerator:
