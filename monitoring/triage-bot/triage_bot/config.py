@@ -26,6 +26,11 @@ class Config:
     target_severities: frozenset[str] = field(default_factory=lambda: frozenset({"critical"}))
     # true면 Discord에 보내지 않고 로그로만 출력 (로컬 실행용)
     dry_run: bool = False
+    # 조회 도구 대상 (같은 monitoring 네임스페이스의 Service 이름)
+    prometheus_url: str = "http://prometheus:9090"
+    loki_url: str = "http://loki:3100"
+    # 이미지에 함께 넣은 docs/runbooks
+    runbook_dir: str = "/app/runbooks"
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -38,4 +43,7 @@ class Config:
             queue_size=_int("QUEUE_SIZE", 20),
             target_severities=_set("TARGET_SEVERITIES", "critical"),
             dry_run=os.environ.get("DRY_RUN", "").lower() in {"1", "true", "yes"},
+            prometheus_url=os.environ.get("PROMETHEUS_URL", cls.prometheus_url).rstrip("/"),
+            loki_url=os.environ.get("LOKI_URL", cls.loki_url).rstrip("/"),
+            runbook_dir=os.environ.get("RUNBOOK_DIR", cls.runbook_dir),
         )

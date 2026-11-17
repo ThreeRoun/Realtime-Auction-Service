@@ -1,0 +1,6 @@
+# 레포 루트 컨텍스트에서 봇 이미지에 필요한 것만 보낸다 (BuildKit: <Dockerfile>.dockerignore)
+*
+!monitoring/triage-bot/requirements.txt
+!monitoring/triage-bot/triage_bot/
+!docs/runbooks/
+**/__pycache__

@@ -22,6 +22,13 @@ from triage_bot.config import Config  # noqa: E402
 from triage_bot.discord import DiscordClient, DiscordError, build_message  # noqa: E402
 from triage_bot.server import JsonFormatter, TriageBot, make_handler  # noqa: E402
 
+
+class NoToolbox:
+    """조회 도구를 쓰지 않는 테스트용 (snapshot 계획이 없으면 호출되지 않음)"""
+
+    def run(self, name, arguments):
+        return f"{name} 결과", False
+
 CRITICAL = frozenset({"critical"})
 RUNBOOK = "https://github.com/ThreeRoun/Realtime-Auction-Service/blob/baseline/docs/runbooks/AuctionEngineDown.md"
 
@@ -194,7 +201,7 @@ class ServerTest(unittest.TestCase):
     def setUp(self):
         logging.disable(logging.CRITICAL)
         self.discord = FakeDiscord()
-        self.bot = TriageBot(Config(cooldown_minutes=30, daily_limit=10), discord=self.discord)
+        self.bot = TriageBot(Config(cooldown_minutes=30, daily_limit=10), discord=self.discord, toolbox=NoToolbox())
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(self.bot))
         self.base = f"http://127.0.0.1:{self.server.server_address[1]}"
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
@@ -249,12 +256,12 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(self.request("GET", "/healthz"), (200, "ok\n"))
 
     def test_queue_full_drops_job(self):
-        bot = TriageBot(Config(queue_size=1), discord=self.discord)
+        bot = TriageBot(Config(queue_size=1), discord=self.discord, toolbox=NoToolbox())
         self.assertEqual(bot.receive(payload(alert(fingerprint="a"), group_key="g1")), "queued")
         self.assertEqual(bot.receive(payload(alert(fingerprint="b"), group_key="g2")), "dropped_queue_full")
 
     def test_discord_failure_is_recorded_and_worker_survives(self):
-        bot = TriageBot(Config(), discord=FakeDiscord(fail=True))
+        bot = TriageBot(Config(), discord=FakeDiscord(fail=True), toolbox=NoToolbox())
         bot.receive(payload())
         self.assertEqual(bot.process(bot.jobs.get_nowait()), "failed")
         self.assertIn('triage_bot_jobs_total{result="failed"} 1', bot.metrics.render())
@@ -269,7 +276,7 @@ class LoggingTest(unittest.TestCase):
 
     def test_dry_run_does_not_post(self):
         discord = FakeDiscord()
-        bot = TriageBot(Config(dry_run=True), discord=discord)
+        bot = TriageBot(Config(dry_run=True), discord=discord, toolbox=NoToolbox())
         bot.receive(payload())
         with redirect_stdout(io.StringIO()):
             self.assertEqual(bot.process(bot.jobs.get_nowait()), "posted")
