@@ -62,7 +62,7 @@ Runbook의 `[도구: ...]` 표시와 같은 이름입니다. Claude가 이 도�
 | 도구 | 하는 일 | 제한 |
 | --- | --- | --- |
 | `query_prometheus` | PromQL 범위 조회 → 시계열별 최근값/최소/최대/추이 | 최대 180분, 시계열 15개 |
-| `query_loki` | LogQL 조회 (최신순). JSON 로그는 level/message/예외 첫 줄/마지막 `Caused by:`(근본 원인)로 줄임. 지표 쿼리도 가능 | `namespace="auction"` 또는 `"monitoring"` 조건 필수, 최대 100줄 |
+| `query_loki` | LogQL 조회 (최신순). JSON 로그는 level, message, 예외 첫 줄, 마지막 `Caused by:`(근본 원인)로 줄임. relay 로그는 `[event]`와 `err`/`reason`도 표시. 지표 쿼리도 가능 | `namespace="auction"` 또는 `"monitoring"` 조건 필수, 최대 100줄 |
 | `k8s_status` | `pods` / `events` / `deployments` / `statefulsets` 상태 요약 | `auction`, `monitoring` 네임스페이스만 |
 | `rollout_history` | Deployment의 배포 이력 (ReplicaSet별 이미지 SHA, 생성 시각) | 최근 10개 |
 | `get_runbook` | 이미지에 함께 넣은 `docs/runbooks/<알람명>.md` | |

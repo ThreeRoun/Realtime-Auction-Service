@@ -106,6 +106,23 @@ class LokiTest(unittest.TestCase):
         # 최신순
         self.assertLess(text.index("Request processing"), text.index("plain text line"))
 
+    def test_relay_logs_keep_event_and_err(self):
+        lines = [
+            json.dumps({"level": "ERROR", "event": "redis_error", "err": "getaddrinfo ENOTFOUND auction-redis",
+                        "message": "Redis 연결 오류"}),
+            json.dumps({"level": "FATAL", "event": "server_error", "reason": "port_in_use", "port": 8081,
+                        "message": "중계 서버 오류"}),
+            json.dumps({"level": "ERROR", "event": "socket_error", "message": "소켓 에러",
+                        "err": {"type": "Error", "message": "read ECONNRESET",
+                                "stack": "Error: read ECONNRESET\n    at TCP.onStreamRead"}}),
+        ]
+        with patch_get(self.stream(*lines)):
+            text = loki.query("http://loki", '{namespace="auction", service="realtime-relay"} | json')
+        self.assertIn("ERROR [redis_error] Redis 연결 오류 | getaddrinfo ENOTFOUND auction-redis", text)
+        self.assertIn("FATAL [server_error] 중계 서버 오류 | reason=port_in_use", text)
+        self.assertIn("ERROR [socket_error] 소켓 에러 | Error: read ECONNRESET", text)
+        self.assertNotIn("onStreamRead", text)
+
     def test_root_cause_is_kept(self):
         stack = ("org.x.BeanCreationException: Error creating bean\n\tat a.b(C.java:1)\n"
                  "Caused by: org.postgresql.util.PSQLException: The connection attempt failed.\n\tat d.e(F.java:2)\n"
