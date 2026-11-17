@@ -231,6 +231,10 @@ annotations:
 
 규칙 파일은 `config/rules/`에 있고, 수정 후 PR 전에 단위 테스트를 돌린다 (CI `Lint / monitoring`에서도 실행).
 
+**Runbook**: critical 알람은 대응 절차를 [docs/runbooks/](../docs/runbooks/README.md)에 알람 이름과 같은 파일로 둔다.
+규칙의 `runbook_url` annotation으로 Discord 알림에 링크가 붙는다. critical 알람을 추가하면 Runbook도 함께 작성한다
+(없으면 CI `Lint / monitoring`의 Runbook 검사가 실패한다).
+
 ```bash
 docker run --rm -v "$PWD/k8s/monitoring/config/rules":/r -w /r --entrypoint sh prom/prometheus:v3.0.1 \
   -c 'promtool check rules *.rules.yml && cd tests && promtool test rules *.test.yml'

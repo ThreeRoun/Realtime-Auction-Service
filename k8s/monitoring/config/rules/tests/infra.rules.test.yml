@@ -159,6 +159,7 @@ tests:
             exp_annotations:
               summary: "auction/auction-db 준비되지 않은 replica 1개"
               description: "auction-db(Postgres)가 Ready가 아니면 모든 API가 실패한다. kubectl -n auction describe pod 로 확인한다."
+              runbook_url: "https://github.com/ThreeRoun/Realtime-Auction-Service/blob/baseline/docs/runbooks/KubeStatefulSetReplicasUnavailable.md"
 
   # 엔진 외 수집 대상 다운 → MonitoringTargetDown, 엔진은 제외
   - interval: 1m
