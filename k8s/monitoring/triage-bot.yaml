@@ -108,6 +108,15 @@ spec:
               value: "20"
             - name: TARGET_SEVERITIES
               value: critical
+            # Claude 분석 (API 키 Secret이 없으면 분석 없이 상태 조회 결과만 게시)
+            - name: ANTHROPIC_API_KEY_FILE
+              value: /etc/triage-bot/anthropic/api-key
+            - name: CLAUDE_MODEL
+              value: claude-opus-5-5
+            - name: CLAUDE_EFFORT
+              value: medium
+            - name: CLAUDE_MAX_TOOL_CALLS
+              value: "12"
           ports:
             - containerPort: 8080
           readinessProbe:
@@ -126,7 +135,7 @@ spec:
               cpu: 10m
               memory: 32Mi
             limits:
-              memory: 128Mi
+              memory: 256Mi
           securityContext:
             runAsNonRoot: true
             runAsUser: 65534
@@ -137,10 +146,18 @@ spec:
             - name: discord
               mountPath: /etc/triage-bot/discord
               readOnly: true
+            # Anthropic API 키 (서버에서 직접 만드는 Secret, 레포에 넣지 않음)
+            - name: anthropic
+              mountPath: /etc/triage-bot/anthropic
+              readOnly: true
       volumes:
         - name: discord
           secret:
             secretName: alertmanager-discord
+            optional: true
+        - name: anthropic
+          secret:
+            secretName: triage-bot-anthropic
             optional: true
 ---
 # 봇에는 Alertmanager(알람 전송)와 Prometheus(지표 수집)만 접근할 수 있다.

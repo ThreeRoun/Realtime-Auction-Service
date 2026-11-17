@@ -31,6 +31,13 @@ class Config:
     loki_url: str = "http://loki:3100"
     # 이미지에 함께 넣은 docs/runbooks
     runbook_dir: str = "/app/runbooks"
+    # Claude 분석: API 키 파일(Secret 마운트)이 없거나 비어 있으면 분석 없이 게시한다
+    anthropic_api_key_file: str = "/etc/triage-bot/anthropic/api-key"
+    claude_model: str = "claude-opus-5-5"
+    claude_effort: str = "medium"
+    # 분석 1건당 도구 호출 상한과 전체 시간 상한 - 비용과 게시 지연의 상한
+    claude_max_tool_calls: int = 12
+    claude_timeout_seconds: int = 300
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -46,4 +53,9 @@ class Config:
             prometheus_url=os.environ.get("PROMETHEUS_URL", cls.prometheus_url).rstrip("/"),
             loki_url=os.environ.get("LOKI_URL", cls.loki_url).rstrip("/"),
             runbook_dir=os.environ.get("RUNBOOK_DIR", cls.runbook_dir),
+            anthropic_api_key_file=os.environ.get("ANTHROPIC_API_KEY_FILE", cls.anthropic_api_key_file),
+            claude_model=os.environ.get("CLAUDE_MODEL", cls.claude_model),
+            claude_effort=os.environ.get("CLAUDE_EFFORT", cls.claude_effort),
+            claude_max_tool_calls=_int("CLAUDE_MAX_TOOL_CALLS", 12),
+            claude_timeout_seconds=_int("CLAUDE_TIMEOUT_SECONDS", 300),
         )

@@ -19,6 +19,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from . import dedup
 from .alerts import Job, PayloadError, parse_payload
 from .analyzer import analyze
+from .claude import ClaudeAnalyst
 from .config import Config
 from .discord import DiscordClient, DiscordError, build_message
 from .metrics import Metrics
@@ -45,9 +46,13 @@ class JsonFormatter(logging.Formatter):
 
 
 class TriageBot:
-    def __init__(self, config: Config, discord: DiscordClient | None = None, toolbox: Toolbox | None = None):
+    def __init__(self, config: Config, discord: DiscordClient | None = None, toolbox: Toolbox | None = None,
+                 analyst: ClaudeAnalyst | None = None):
         self.config = config
         self.toolbox = toolbox or Toolbox(config.prometheus_url, config.loki_url, config.runbook_dir)
+        self.analyst = analyst or ClaudeAnalyst(
+            config.anthropic_api_key_file, model=config.claude_model, effort=config.claude_effort,
+            max_tool_calls=config.claude_max_tool_calls, timeout_seconds=config.claude_timeout_seconds)
         self.metrics = Metrics()
         self.gate = dedup.Gate(timedelta(minutes=config.cooldown_minutes), config.daily_limit)
         self.discord = discord or DiscordClient(config.discord_webhook_url_file)
@@ -85,7 +90,9 @@ class TriageBot:
         started = time.monotonic()
         fields = {"job": job.job_id, "alert": job.title}
         try:
-            message = build_message(job, analyze(job, self.toolbox))
+            analysis = analyze(job, self.toolbox, self.analyst)
+            self._record_analysis(analysis, fields)
+            message = build_message(job, analysis)
             if self.config.dry_run:
                 log.info("dry-run: Discord 게시 생략", extra={"fields": {**fields, "message": message}})
             else:
@@ -101,6 +108,18 @@ class TriageBot:
         self.metrics.job_result(result)
         self.metrics.job_duration(time.monotonic() - started)
         return result
+
+    def _record_analysis(self, analysis, fields: dict) -> None:
+        result = analysis.claude
+        self.metrics.claude_result(analysis.status, result.tool_calls if result else 0,
+                                   result.usage if result else None)
+        info = {**fields, "analysis": analysis.status}
+        if result:
+            info.update(model=result.model, tool_calls=result.tool_calls, turns=result.turns,
+                        seconds=round(result.seconds, 1), usage=result.usage)
+        elif analysis.status == "failed":
+            info["reason"] = analysis.summary
+        log.info("분석 완료", extra={"fields": info})
 
     def worker(self) -> None:
         while True:
@@ -174,7 +193,8 @@ def main() -> None:
     signal.signal(signal.SIGINT, shutdown)
     log.info("시작", extra={"fields": {
         "port": config.port, "dry_run": config.dry_run, "cooldown_minutes": config.cooldown_minutes,
-        "daily_limit": config.daily_limit, "severities": sorted(config.target_severities)}})
+        "daily_limit": config.daily_limit, "severities": sorted(config.target_severities),
+        "claude_enabled": bot.analyst.enabled(), "claude_model": config.claude_model}})
     server.serve_forever()
     bot.stop_worker()
     worker.join(timeout=20)
