@@ -9,6 +9,7 @@ import com.threeroun.auctionengine.repository.UserRepository;
 import com.threeroun.auctionengine.service.ProductImageService;
 import com.threeroun.auctionengine.service.ProductNotFoundException;
 import com.threeroun.auctionengine.service.UserNotFoundException;
+import com.threeroun.auctionengine.storage.ProductImageTypes;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -27,7 +28,6 @@ import org.springframework.http.HttpStatus;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -41,13 +41,6 @@ public class ProductController {
     // EXTENDED(마감연장)도 입찰 가능한 진행중 상태이므로 함께 포함한다
     // (BidService가 입찰을 허용하는 상태 집합과 반드시 일치시켜야 프론트에 보이는 상품 = 입찰 가능한 상품이 된다).
     private static final List<ProductStatus> DEFAULT_STATUSES = List.of(ProductStatus.IN_PROGRESS, ProductStatus.EXTENDED);
-
-    // 업로드 허용 이미지 형식 - 확장자는 클라이언트가 보낸 원본 파일명을 그대로 믿지 않고
-    // (경로 조작 방지) content-type으로부터 직접 매핑해서 정한다.
-    private static final Map<String, String> ALLOWED_IMAGE_TYPES = Map.of(
-            "image/jpeg", "jpg",
-            "image/png", "png",
-            "image/webp", "webp");
 
     private final ProductRepository productRepository;
     private final UserRepository userRepository;
@@ -150,11 +143,9 @@ public class ProductController {
         if (image.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "이미지 파일이 비어있습니다");
         }
-        String extension = ALLOWED_IMAGE_TYPES.get(image.getContentType());
-        if (extension == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "지원하지 않는 이미지 형식입니다 (jpeg/png/webp만 허용)");
-        }
+        String extension = ProductImageTypes.extensionFor(image.getContentType())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "지원하지 않는 이미지 형식입니다 (jpeg/png/webp만 허용)"));
 
         byte[] content;
         try {
@@ -163,7 +154,7 @@ public class ProductController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "이미지 파일을 읽을 수 없습니다");
         }
 
-        Product product = productImageService.uploadImage(id, requesterId, extension, content);
+        Product product = productImageService.uploadImage(id, requesterId, extension, image.getContentType(), content);
         return ProductResponse.from(product);
     }
 
