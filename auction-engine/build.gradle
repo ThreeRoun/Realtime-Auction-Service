@@ -39,7 +39,7 @@ dependencies {
 	// 여러 Pod(k8s 롤링 업데이트 중 중복 포함)에서 @Scheduled가 동시에 안 돌게 막는 분산 락
 	implementation 'net.javacrumbs.shedlock:shedlock-spring:7.11.0'
 	implementation 'net.javacrumbs.shedlock:shedlock-provider-jdbc-template:7.11.0'
-	// 상품 이미지를 S3 호환 스토리지(클러스터의 MinIO)에 저장한다 (이슈 #101, app.image-storage.type=s3).
+	// 상품 이미지를 S3 호환 스토리지(클러스터의 SeaweedFS)에 저장한다 (이슈 #101, app.image-storage.type=s3).
 	// 동기 클라이언트(Apache HTTP)만 쓰므로 비동기용 Netty 클라이언트는 뺀다.
 	implementation platform('software.amazon.awssdk:bom:2.57.8')
 	implementation('software.amazon.awssdk:s3') {

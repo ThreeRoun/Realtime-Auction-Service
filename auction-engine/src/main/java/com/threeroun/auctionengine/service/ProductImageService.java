@@ -22,7 +22,7 @@ public class ProductImageService {
         this.transactionTemplate = transactionTemplate;
     }
 
-    // 파일 저장은 트랜잭션 밖에서 한다 - 저장소가 MinIO(네트워크 호출)일 때 업로드하는 동안
+    // 파일 저장은 트랜잭션 밖에서 한다 - 저장소가 오브젝트 스토리지(네트워크 호출)일 때 업로드하는 동안
     // DB 커넥션을 붙잡고 있지 않게 하기 위해서다. 그래서 메서드 전체가 아니라 imageUrl을 바꾸는
     // 부분만 TransactionTemplate으로 감싼다 (같은 클래스 안 호출이라 @Transactional은 프록시를 안 탄다).
     public Product uploadImage(UUID productId, UUID requesterId, String extension, String contentType,
