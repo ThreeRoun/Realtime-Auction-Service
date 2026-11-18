@@ -13,12 +13,14 @@ k8s/
 │   ├── configmap.yaml       # 비밀이 아닌 환경변수
 │   ├── postgres.yaml        # StatefulSet + PVC(5Gi), Service: auction-db
 │   ├── redis.yaml           # Deployment, Service: auction-redis
-│   ├── auction-engine.yaml  # Deployment(replica 1) + 상품 이미지 PVC(2Gi)
+│   ├── object-storage.yaml  # 상품 이미지 저장소(SeaweedFS, S3 호환) StatefulSet + PVC(2Gi), Service: auction-s3
+│   ├── auction-engine.yaml  # Deployment(replica 2)
 │   ├── realtime-relay.yaml  # Deployment(replica 2)
 │   ├── frontend.yaml        # Deployment(replica 2)
 │   ├── ingress.yaml         # 외부 진입점 → frontend(nginx)
 │   └── kustomization.yaml
 ├── overlays/prod/           # 이미지 태그 지정
+├── migrations/              # 일회성 작업 (kustomization에 포함되지 않음, 직접 실행)
 └── monitoring/              # 모니터링·로깅·알람 스택 (namespace: monitoring) - 앱과 따로 적용
     ├── prometheus.yaml      # 지표 수집 + 알람 규칙 평가 (PVC 5Gi, 7일 보존)
     ├── alertmanager.yaml    # 알람 → Discord 발송
@@ -70,11 +72,13 @@ Secret은 저장소에 커밋하지 않고 서버에서 직접 만든다.
 ```bash
 kubectl create namespace auction
 
-# DB 계정과 JWT 서명 키
+# DB 계정, JWT 서명 키, 상품 이미지 저장소(auction-s3) 접속 키
 kubectl -n auction create secret generic auction-secret \
   --from-literal=POSTGRES_USER=auction \
   --from-literal=POSTGRES_PASSWORD='<DB 비밀번호>' \
-  --from-literal=JWT_SECRET="$(openssl rand -base64 32)"
+  --from-literal=JWT_SECRET="$(openssl rand -base64 32)" \
+  --from-literal=S3_ACCESS_KEY="$(openssl rand -hex 10)" \
+  --from-literal=S3_SECRET_KEY="$(openssl rand -hex 20)"
 
 # GHCR private 이미지 pull용 (read:packages 권한이 있는 PAT)
 kubectl -n auction create secret docker-registry ghcr-secret \
@@ -84,6 +88,9 @@ kubectl -n auction create secret docker-registry ghcr-secret \
 ```
 
 > `POSTGRES_PASSWORD`는 DB를 처음 초기화할 때만 적용된다. 이미 데이터가 있는 PVC에서는 Secret만 바꿔도 비밀번호가 바뀌지 않는다.
+>
+> `S3_ACCESS_KEY`/`S3_SECRET_KEY`는 경매 엔진과 `auction-s3`가 같이 쓴다. `auction-s3`가 이 값을 JSON 설정 파일에 그대로 넣으므로 위처럼 hex 문자열만 쓴다.
+> 키를 바꾸면 두 쪽 모두 재시작해야 반영된다 (`kubectl -n auction rollout restart statefulset/auction-s3 deploy/auction-engine`).
 
 ### 3. 모니터링 스택용 네임스페이스와 Secret 생성
 
@@ -296,3 +303,66 @@ kubectl -n auction rollout restart deploy/auction-engine
 - **realtime-relay는 지표 미노출**: relay 자체 지표(연결 수 등)는 없고, Pod 상태(재시작/Pending)만 kube-state-metrics로 본다.
 - **서버 네트워크 지표 없음**: node-exporter가 hostNetwork를 쓰지 않아(포트 외부 비노출) 네트워크 지표는 서버 NIC 기준이 아니다.
 - **compose 배포와 동시 운영 금지**: 같은 서버에서 compose와 k3s를 함께 띄우면 DB가 두 벌이 된다. 전환 시 기존 compose DB를 `pg_dump`로 옮긴 뒤 compose를 내린다.
+
+## 상품 이미지 저장소 이전 (이슈 #101)
+
+경매 엔진이 상품 이미지를 Pod 로컬 PVC(`product-images`)에 저장하던 구조에서, 공유 오브젝트 스토리지(`auction-s3`)에 저장하는 구조로 바꾸면서 한 번만 하는 작업이다.
+오브젝트 키가 파일명 그대로라서 DB의 `imageUrl`은 고치지 않는다.
+
+`kubectl apply -k`는 base에서 빠진 리소스를 지우지 않으므로, 기존 `product-images` PVC는 직접 지우기 전까지 남아 있다.
+
+### 1. 머지 전: Secret에 접속 키 추가
+
+`auction-secret`에 `S3_ACCESS_KEY`/`S3_SECRET_KEY`가 없으면 경매 엔진과 `auction-s3` Pod가 뜨지 않는다 (CI 배포도 이 단계에서 실패한다).
+
+```bash
+kubectl -n auction patch secret auction-secret --type merge -p "{\"stringData\":{
+  \"S3_ACCESS_KEY\":\"$(openssl rand -hex 10)\",
+  \"S3_SECRET_KEY\":\"$(openssl rand -hex 20)\"}}"
+```
+
+### 2. 머지 전: 저장소를 먼저 띄우고 기존 이미지 복사
+
+머지 직후부터 엔진이 새 저장소에서 이미지를 읽으므로, 그 전에 미리 복사해 두면 기존 이미지가 안 보이는 시간이 없다.
+
+```bash
+kubectl apply -n auction -f k8s/base/object-storage.yaml
+kubectl -n auction rollout status statefulset/auction-s3 --timeout=300s
+
+kubectl apply -f k8s/migrations/product-images-to-s3.yaml
+kubectl -n auction wait --for=condition=complete job/product-images-to-s3 --timeout=300s
+kubectl -n auction logs job/product-images-to-s3 | tail -3   # 원본 파일 수와 버킷 오브젝트 수가 같은지 확인
+```
+
+### 3. 머지 → CI 배포
+
+경매 엔진이 `s3` 모드, replica 2로 바뀐다.
+
+### 4. 머지 후: 한 번 더 복사
+
+2번 이후 머지 전까지 업로드된 이미지는 아직 옛 PVC에만 있다. 같은 Job을 다시 돌리면 새로 생긴 파일만 복사한다.
+
+```bash
+kubectl -n auction delete job product-images-to-s3
+kubectl apply -f k8s/migrations/product-images-to-s3.yaml
+kubectl -n auction wait --for=condition=complete job/product-images-to-s3 --timeout=300s
+kubectl -n auction logs job/product-images-to-s3 | tail -3
+```
+
+### 5. 확인
+
+```bash
+# 이미지가 있는 상품의 imageUrl을 골라 여러 번 조회해서 (두 Pod에 나눠 들어감) 모두 200인지 본다
+url=$(curl -s 'http://localhost/api/products?status=all' | grep -o '"/images/[^"]*"' | head -1 | tr -d '"')
+for i in $(seq 1 6); do curl -s -o /dev/null -w '%{http_code}\n' "http://localhost$url"; done
+```
+
+브라우저에서 기존 상품 이미지가 보이는지, 새 이미지 업로드 후 새로고침을 반복해도 계속 보이는지 확인한다.
+
+### 6. 옛 PVC 삭제
+
+며칠 운영해 문제가 없으면 지운다. **지우면 되돌릴 수 없다.**
+
+```bash
+kubectl -n auction delete pvc product-images
+```

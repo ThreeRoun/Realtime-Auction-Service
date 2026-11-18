@@ -1,0 +1,56 @@
+# 일회성 작업: 기존 상품 이미지 PVC(product-images)의 파일을 오브젝트 스토리지(auction-s3) 버킷으로 복사한다 (이슈 #101).
+# kustomization에 넣지 않았다 - 배포 때마다 돌지 않고, k8s/README.md의 "상품 이미지 저장소 이전" 절차에서 직접 실행한다.
+#
+# - 오브젝트 키 = 파일명 그대로라서 DB의 imageUrl(/images/<파일명>)은 고칠 필요가 없다.
+# - sync라서 여러 번 돌려도 안전하다 (이미 같은 크기/시간으로 올라간 파일은 건너뛴다).
+# - 원본 PVC는 읽기 전용으로 붙이고 지우지 않는다.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: product-images-to-s3
+  namespace: auction
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 86400
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: sync
+          image: amazon/aws-cli:2.39.3
+          # 엔진이 아직 s3 모드로 뜬 적이 없으면 버킷이 없으므로 먼저 만든다 (이미 있으면 그대로 진행).
+          # sync는 파일 확장자(jpg/png/webp)로 Content-Type을 정해서 올린다.
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              endpoint=http://auction-s3:8333
+              aws s3api head-bucket --bucket product-images --endpoint-url "$endpoint" 2>/dev/null \
+                || aws s3 mb s3://product-images --endpoint-url "$endpoint"
+              echo "원본 파일 수: $(find /old-images -maxdepth 1 -type f | wc -l)"
+              aws s3 sync /old-images s3://product-images --endpoint-url "$endpoint" --no-progress
+              echo "버킷 오브젝트 수: $(aws s3 ls s3://product-images --endpoint-url "$endpoint" | wc -l)"
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: auction-secret
+                  key: S3_ACCESS_KEY
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: auction-secret
+                  key: S3_SECRET_KEY
+            # SeaweedFS는 region을 쓰지 않지만 CLI 요청 서명에 값이 필요하다 (엔진 설정과 같은 값)
+            - name: AWS_DEFAULT_REGION
+              value: us-east-1
+          volumeMounts:
+            - name: old-images
+              mountPath: /old-images
+              readOnly: true
+      volumes:
+        - name: old-images
+          persistentVolumeClaim:
+            claimName: product-images
+            readOnly: true

@@ -64,7 +64,7 @@ sudo du -xh --max-depth=2 / 2>/dev/null | sort -h | tail -15
 | `*_monitoring_loki-data` | 조치 C |
 | `*_monitoring_prometheus-data` | 보통 4GB 상한이라 원인이 아님. 넘었다면 조치 C와 같이 담당자 판단 |
 | `*_auction_db-data-auction-db-0` | 조치 D |
-| `*_auction_product-images` | 조치 D |
+| `*_auction_data-auction-s3-0` (상품 이미지 저장소) | 조치 D |
 | GitHub runner 작업 폴더(`_work`), Docker, 개인 파일 | 조치 E |
 
 ## 조치

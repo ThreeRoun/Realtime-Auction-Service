@@ -92,6 +92,13 @@ jobs:
           export KUBECONFIG="$kubeconfig"
           kubectl get namespace "$NAMESPACE" > /dev/null
           kubectl -n "$NAMESPACE" get secret auction-secret ghcr-secret > /dev/null
+          # 상품 이미지 저장소 접속 키 (이슈 #101) - 없으면 auction-s3와 경매 엔진 Pod가 뜨지 않는다
+          for key in S3_ACCESS_KEY S3_SECRET_KEY; do
+            if [ -z "$(kubectl -n "$NAMESPACE" get secret auction-secret -o jsonpath="{.data.$key}")" ]; then
+              echo "::error::auction-secret에 $key가 없습니다. k8s/README.md의 '상품 이미지 저장소 이전' 1번을 진행하세요"
+              exit 1
+            fi
+          done
 
       # 롤백 기준점: 배포 직전에 돌고 있던 이미지 (rollout undo는 apply가 적용 전에 실패해도
       # 한 단계 더 이전 버전으로 되돌려 버리므로, 실제로 돌던 이미지를 기록해 두고 그걸로 되돌린다)
@@ -126,6 +133,8 @@ jobs:
       - name: Wait for rollout
         run: |
           set -eu
+          # 경매 엔진이 기동하면서 상품 이미지 저장소(auction-s3)에 버킷을 확인하므로 같이 기다린다
+          kubectl -n "$NAMESPACE" rollout status statefulset/auction-s3 --timeout=300s
           for app in $APPS; do
             kubectl -n "$NAMESPACE" rollout status deploy/"$app" --timeout=300s
           done
