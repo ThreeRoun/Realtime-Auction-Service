@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.time.Duration;
 
 // 상품 이미지(/images/<파일명>)를 저장소(ProductImageStorage)에서 읽어 그대로 내려준다.
-// 저장소가 MinIO여도 URL은 그대로라서, DB의 imageUrl, 프론트, nginx(/images/ -> 엔진) 설정을 바꿀 필요가 없다.
+// 저장소가 오브젝트 스토리지여도 URL은 그대로라서, DB의 imageUrl, 프론트, nginx(/images/ -> 엔진) 설정을 바꿀 필요가 없다.
 // 어느 Pod로 요청이 가도 같은 저장소를 읽으므로 replica가 여러 개여도 일관되게 보인다 (이슈 #101).
 @RestController
 public class ProductImageController {

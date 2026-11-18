@@ -25,8 +25,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-// 실제 MinIO 없이 S3Client를 mock으로 바꿔서, 버킷/키/content-type을 맞게 넘기는지와
-// 버킷·오브젝트가 없을 때의 처리만 검증한다. MinIO와의 실제 연동은 배포 후 확인한다.
+// 실제 S3 서버 없이 S3Client를 mock으로 바꿔서, 버킷/키/content-type을 맞게 넘기는지와
+// 버킷·오브젝트가 없을 때의 처리만 검증한다. 실제 서버(SeaweedFS)와의 연동은 배포 후 확인한다.
 @SuppressWarnings("unchecked")
 class S3ProductImageStorageTest {
 
@@ -91,7 +91,7 @@ class S3ProductImageStorageTest {
     }
 
     @Test
-    void 기동_시_MinIO에_연결하지_못해도_예외를_던지지_않는다() {
+    void 기동_시_저장소에_연결하지_못해도_예외를_던지지_않는다() {
         doThrow(new RuntimeException("connection refused")).when(s3Client).headBucket(any(Consumer.class));
 
         storage.ensureBucket();

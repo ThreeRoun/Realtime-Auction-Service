@@ -11,7 +11,7 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import java.util.Optional;
 
-// S3 호환 오브젝트 스토리지(클러스터의 MinIO)에 저장한다. 오브젝트 키는 파일명 그대로라서,
+// S3 호환 오브젝트 스토리지(클러스터의 SeaweedFS)에 저장한다. 오브젝트 키는 파일명 그대로라서,
 // 로컬 디스크에 있던 기존 이미지를 같은 이름으로 버킷에 복사하면 DB의 imageUrl을 고칠 필요가 없다.
 // 빈 등록은 S3StorageConfig가 한다 (app.image-storage.type=s3일 때만).
 public class S3ProductImageStorage implements ProductImageStorage {
@@ -26,7 +26,7 @@ public class S3ProductImageStorage implements ProductImageStorage {
         this.bucket = bucket;
     }
 
-    // 기동 시점에 버킷이 없으면 만들어 둔다. MinIO가 아직 안 떠 있어도 엔진 기동(상품 조회/입찰)까지
+    // 기동 시점에 버킷이 없으면 만들어 둔다. 저장소가 아직 안 떠 있어도 엔진 기동(상품 조회/입찰)까지
     // 막지는 않도록 실패는 경고만 남긴다 - 그 경우 첫 업로드 때 save()에서 다시 만든다.
     public void ensureBucket() {
         try {
