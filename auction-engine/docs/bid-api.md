@@ -62,7 +62,7 @@ BidService가 진 입찰 기록도 롤백 없이 남기도록 설계돼 있어(�
 | UNAUTHORIZED | 401 | Authorization 헤더가 없거나 토큰이 유효하지 않음(서명 불일치/만료) |
 | SELF_BID_NOT_ALLOWED | 403 | 판매자 본인이 자기 상품에 입찰 시도 (자전 거래 방지) |
 | PRODUCT_NOT_FOUND | 404 | 존재하지 않는 상품 |
-| AUCTION_NOT_IN_PROGRESS | 409 | 상품 status가 진행중/마감연장이 아님 (아직 시작 전이거나 이미 종료됨) |
+| AUCTION_NOT_IN_PROGRESS | 409 | 상품 status가 진행중/마감연장이 아님 (아직 시작 전이거나 이미 종료됨), 또는 **마감 시각이 지남** (스케줄러가 아직 마감 처리를 하기 전이어도 거절한다) |
 | BID_COOLDOWN_ACTIVE | 429 | 같은 유저가 같은 상품에 직전 입찰 후 10초 안에 다시 입찰함 |
 | INVALID_REQUEST | 400 | productId 누락, amount 누락/0 이하 등 요청 형식 자체가 잘못됨 |
 

@@ -16,7 +16,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 
 import javax.crypto.SecretKey;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.Map;
+import java.util.TimeZone;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -35,6 +39,8 @@ class AuthControllerTest {
     private PasswordEncoder passwordEncoder;
     @Value("${jwt.secret}")
     private String jwtSecret;
+    @Value("${jwt.expiration-minutes}")
+    private long expirationMinutes;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private User user(String rawPassword) {
@@ -65,6 +71,34 @@ class AuthControllerTest {
         String subject = Jwts.parser().verifyWith(key).build()
                 .parseSignedClaims(token).getPayload().getSubject();
         assertThat(subject).isEqualTo(user.getId().toString());
+    }
+
+    // 프론트(Navbar)가 expiresAt에 "Z"를 붙여 UTC로 해석한다 (PR #93). 서버 기본 시간대를 한국 시각으로 바꿔도
+    // (이슈 #152, AuctionEngineApplication) 이 값은 UTC 기준을 유지해야 로그인 만료 표시가 어긋나지 않는다.
+    @Test
+    void 로그인_만료_시각은_서버_시간대와_무관하게_UTC_기준이다() throws Exception {
+        TimeZone original = TimeZone.getDefault();
+        try {
+            // 운영에서 main()이 적용하는 서버 시간대(한국 시각)를 흉내 낸다
+            TimeZone.setDefault(TimeZone.getTimeZone("Asia/Seoul"));
+            User user = user("secret1234");
+            String body = """
+                    { "username": "%s", "password": "secret1234" }
+                    """.formatted(user.getUsername());
+
+            String response = mockMvc.perform(post("/api/login")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
+                    .andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsString();
+
+            LocalDateTime expiresAt = LocalDateTime.parse((String) objectMapper.readValue(response, Map.class)
+                    .get("expiresAt"));
+            LocalDateTime expectedUtc = LocalDateTime.now(ZoneOffset.UTC).plusMinutes(expirationMinutes);
+            assertThat(Duration.between(expectedUtc, expiresAt).abs()).isLessThan(Duration.ofMinutes(2));
+        } finally {
+            TimeZone.setDefault(original);
+        }
     }
 
     @Test

@@ -14,6 +14,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest
 class BidServiceAntiSnipingTest {
@@ -55,6 +56,25 @@ class BidServiceAntiSnipingTest {
         Product reloaded = productRepository.findById(product.getId()).orElseThrow();
         assertThat(reloaded.getStatus()).isEqualTo(ProductStatus.EXTENDED);
         assertThat(reloaded.getEndAt()).isAfter(originalEndAt.plus(BidService.EXTENSION_DURATION.minusSeconds(1)));
+    }
+
+    // 이슈 #152 - 마감 시각이 이미 지난 입찰이 "마감 임박"으로 취급되어 마감이 연장되면 안 된다.
+    // (남은 시간이 음수라서 "30초 이하 남음"으로 판정되던 구멍을 막는다)
+    @Test
+    void 마감_시각이_지난_입찰은_거절되고_마감이_연장되지_않는다() {
+        User seller = user("seller");
+        User bidder = user("bidder");
+        LocalDateTime originalEndAt = LocalDateTime.now().minusSeconds(5);
+        Product product = product(seller, originalEndAt);
+
+        assertThatThrownBy(() -> bidService.placeBid(product.getId(), bidder.getId(), STARTING_PRICE + BID_UNIT))
+                .isInstanceOf(AuctionNotInProgressException.class);
+
+        Product reloaded = productRepository.findById(product.getId()).orElseThrow();
+        assertThat(reloaded.getStatus()).isEqualTo(ProductStatus.IN_PROGRESS);
+        assertThat(reloaded.getCurrentPrice()).isEqualTo(STARTING_PRICE);
+        assertThat(reloaded.getEndAt().truncatedTo(ChronoUnit.SECONDS))
+                .isEqualTo(originalEndAt.truncatedTo(ChronoUnit.SECONDS));
     }
 
     @Test
