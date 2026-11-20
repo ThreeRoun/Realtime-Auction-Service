@@ -74,4 +74,6 @@ BidService가 진 입찰 기록도 롤백 없이 남기도록 설계돼 있어(�
 
 입찰 성공 시(`isValid: true`) Redis Pub/Sub 단일 채널 `auction_events`로 `bid_placed` 이벤트를 발행한다. `isValid: false`(진 입찰)는 발행하지 않는다. 마감이 연장되면(`extended: true`) `auction_extended` 이벤트도 함께 발행하고, 마감 스케줄러가 상품을 닫으면 `auction_closed` 이벤트도 발행한다 (낙찰/유찰 모두, 자세한 건 `auction-closing.md` 참고).
 
+**Redis가 멈춰 있어도 입찰/연장/마감 처리 자체는 정상 완료된다** (이벤트는 DB 커밋 뒤에 발행하므로). 이 경우 발행은 약 1초(`spring.data.redis.timeout`, 환경변수 `REDIS_TIMEOUT`) 안에 포기하고, 그 이벤트는 유실되어 다른 사용자 화면에 실시간으로 반영되지 않는다 (새로고침하면 DB 기준 값이 보인다). 유실은 로그(ERROR)와 지표 `auction_event_publish_failed_total{event=...}`로 확인한다.
+
 B(실시간 중계)가 이 채널 하나만 구독해 모든 이벤트를 받고, 받은 메시지를 그대로(pass-through) 브라우저에 전달하므로 payload에 `event` 필드(예: `"bid_placed"`)가 반드시 포함되어야 이벤트 종류를 구분할 수 있다. 이벤트 스펙은 [README.md](../../README.md)의 "WebSocket 이벤트" 섹션 참고 (`bid_placed`, `auction_extended`, `auction_closed`).
