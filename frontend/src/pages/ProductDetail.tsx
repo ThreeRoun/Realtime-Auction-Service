@@ -19,6 +19,7 @@ function ProductDetail() {
   const [endAt, setEndAt] = useState("");
   const [isAuctionClosed, setIsAuctionClosed] = useState(false);
   const [winnerId, setWinnerId] = useState<string | null>(null);
+  const [winnerUsername, setWinnerUsername] = useState<string | null>(null);
   const [finalPrice, setFinalPrice] = useState<number | null>(null);
   const [bidAmount, setBidAmount] = useState("");
   const [isBidding, setIsBidding] = useState(false);
@@ -92,6 +93,17 @@ function ProductDetail() {
           setIsAuctionClosed(true);
           setWinnerId(data.winner_id);
           setFinalPrice(data.final_price);
+
+          // 이벤트에는 낙찰자 ID만 있어서, 닉네임은 상품 정보를 다시 읽어서 채운다 (엔진 이슈 #148).
+          // 실패하거나 닉네임이 아직 없으면 ID로 대신 보여준다.
+          fetch(`/api/products/${productId}`)
+            .then((response) => response.json())
+            .then((latest: Product) => {
+              setWinnerUsername(latest.winnerUsername ?? null);
+            })
+            .catch((error) => {
+              console.error("낙찰자 닉네임 조회 실패:", error);
+            });
         }
       },
       // 끊겨 있던 동안 놓친 입찰을 REST로 다시 불러와 현재가를 맞춘다
@@ -161,7 +173,14 @@ function ProductDetail() {
       setBidMessage(`${amount.toLocaleString()}원 입찰에 성공했습니다.`);
       setBidAmount("");
     } else {
-      setBidMessage("유효하지 않은 입찰입니다.");
+      // 가격을 넘지 못한 입찰이다. 엔진이 다음 입찰의 최소 금액(minNextBid)을 내려주면 그 값을 쓴다 -
+      // 내가 화면을 보는 사이 다른 사람이 먼저 올렸어도 서버 기준의 정확한 값이다.
+      // 아직 그 필드가 없는 엔진이면 화면의 현재가 + 입찰 단위로 계산한 값을 대신 쓴다 (어긋날 수 있다).
+      const minNextBid = result.minNextBid ?? currentPrice + product.bidUnit;
+
+      setBidMessage(
+        `현재 최소 입찰가는 ${minNextBid.toLocaleString()}원입니다. 더 높은 금액으로 입찰해 주세요.`
+      );
     }
   } catch (error) {
     console.error("입찰 요청 실패:", error);
@@ -220,7 +239,10 @@ function ProductDetail() {
             </p>
 
             <p>
-              최고 입찰자: {highestBid ? highestBid.bidderId : "아직 입찰자가 없습니다."}
+              최고 입찰자:{" "}
+              {highestBid
+                ? (highestBid.bidderUsername ?? highestBid.bidderId)
+                : "아직 입찰자가 없습니다."}
             </p>
 
             <p>
@@ -234,7 +256,11 @@ function ProductDetail() {
 
                 {winnerId !== null ? (
                   <>
-                    <p>낙찰자 ID: {winnerId}</p>
+                    {winnerUsername ? (
+                      <p>낙찰자: {winnerUsername}</p>
+                    ) : (
+                      <p>낙찰자 ID: {winnerId}</p>
+                    )}
                     <p>
                       최종 낙찰가: {finalPrice?.toLocaleString() ?? "정보 없음"}원
                     </p>
