@@ -33,7 +33,9 @@ Content-Type: application/json
   "amount": 15000,
   "bidAt": "2026-09-23T13:40:00",
   "isValid": true,
-  "extended": false
+  "extended": false,
+  "reason": null,
+  "minNextBid": 20000
 }
 ```
 
@@ -41,6 +43,11 @@ Content-Type: application/json
 요청 자체는 정상 접수된 것이고(Bid 로그 테이블에 기록됨, README의 "로그 테이블" 방침), 단지 최고가 갱신에는 실패했다는 의미다.
 BidService가 진 입찰 기록도 롤백 없이 남기도록 설계돼 있어(트랜잭션 안에서 예외를 던지지 않음), 그 설계와 HTTP 응답 의미를 일치시키기 위해
 409가 아닌 201 + `isValid: false`로 통일했다.
+
+`reason`과 `minNextBid`는 프론트가 "왜 입찰이 안 됐는지"를 사용자에게 알려줄 수 있도록 덧붙인 필드다 (기존 필드는 그대로라 호환된다).
+- `reason`: `isValid: false`일 때 사유 코드. 지금은 `AMOUNT_TOO_LOW`(현재가 + 입찰 단위를 넘기지 못함, 다른 사람이 먼저 올린 경우 포함) 하나다. 유효한 입찰이면 `null`.
+- `minNextBid`: **이 요청을 처리한 직후 기준으로 다음 입찰이 유효하려면 필요한 최소 금액**(현재가 + 입찰 단위). 상품 row를 잠근 채로 계산하므로 동시 입찰 중에도 그 순간의 정확한 값이다. 진 입찰이면 "이 금액 이상으로 다시 입찰하라"는 안내에 그대로 쓸 수 있다.
+- 본인 상품, 쿨다운, 마감 같은 다른 거절 사유는 이 응답이 아니라 아래 오류 코드(403/429/409)로 전달된다.
 
 `extended`는 **이 요청이 지금 막 마감 연장을 발생시켰는지** 여부다. 유효한 입찰이고, 마감까지 30초 이하로 남은 상태였다면 마감을 1분 연장하고 상품 status를 `EXTENDED`로 바꾼 뒤 `true`가 된다 (값은 `BidService.ANTI_SNIPING_WINDOW` / `EXTENSION_DURATION` 상수로 조정 가능). 진 입찰은 가격이 안 바뀌므로 연장 대상이 아니라 항상 `false`.
 

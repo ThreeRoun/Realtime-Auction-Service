@@ -332,6 +332,58 @@ class ProductControllerTest {
         assertThat(((Number) bids.get(1).get("amount")).intValue()).isEqualTo(11000);
     }
 
+    // 이슈 #148 - 화면에 UUID 대신 닉네임을 보여주기 위해 입찰 이력에 입찰자 닉네임을 싣는다.
+    @Test
+    void 입찰_이력에_입찰자_닉네임이_포함된다() throws Exception {
+        User seller = seller();
+        User bidder = seller();
+        Product product = product(seller, ProductStatus.IN_PROGRESS, LocalDateTime.now().plusHours(1));
+
+        Map<String, Object> bid = Map.of("productId", product.getId().toString(), "amount", 11000);
+        mockMvc.perform(post("/api/bids").header(HttpHeaders.AUTHORIZATION, bearerToken(bidder))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(bid))).andExpect(status().isCreated());
+
+        String response = mockMvc.perform(get("/api/products/{id}/bids", product.getId()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        List<Map<String, Object>> bids = objectMapper.readValue(response, List.class);
+        assertThat(bids).hasSize(1);
+        assertThat(bids.get(0).get("bidderId")).isEqualTo(bidder.getId().toString());
+        assertThat(bids.get(0).get("bidderUsername")).isEqualTo(bidder.getUsername());
+    }
+
+    // winner는 낙찰 전에는 null이다. 조회 쿼리를 inner join으로 잘못 바꾸면 낙찰자 없는 진행중 상품이
+    // 목록에서 통째로 사라지므로, "낙찰자 없는 상품도 그대로 나온다"를 함께 고정한다.
+    @Test
+    void 낙찰자가_있으면_닉네임을_반환하고_없는_상품도_목록에서_사라지지_않는다() throws Exception {
+        User seller = seller();
+        User winner = seller();
+        Product sold = product(seller, ProductStatus.SOLD, LocalDateTime.now().minusMinutes(10));
+        sold.setWinner(winner);
+        productRepository.save(sold);
+        Product open = product(seller, ProductStatus.IN_PROGRESS, LocalDateTime.now().plusHours(1));
+
+        String detail = mockMvc.perform(get("/api/products/{id}", sold.getId()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        Map<?, ?> detailBody = objectMapper.readValue(detail, Map.class);
+        assertThat(detailBody.get("winnerId")).isEqualTo(winner.getId().toString());
+        assertThat(detailBody.get("winnerUsername")).isEqualTo(winner.getUsername());
+
+        String list = mockMvc.perform(get("/api/products").param("status", "all"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        List<Map<String, Object>> products = objectMapper.readValue(list, List.class);
+        Map<String, Object> soldInList = products.stream()
+                .filter(p -> sold.getId().toString().equals(p.get("id"))).findFirst().orElseThrow();
+        Map<String, Object> openInList = products.stream()
+                .filter(p -> open.getId().toString().equals(p.get("id"))).findFirst().orElseThrow();
+        assertThat(soldInList.get("winnerUsername")).isEqualTo(winner.getUsername());
+        assertThat(openInList.get("winnerUsername")).isNull();
+    }
+
     @Test
     void 존재하지_않는_상품의_입찰이력을_조회하면_404를_반환한다() throws Exception {
         mockMvc.perform(get("/api/products/{id}/bids", UUID.randomUUID()))

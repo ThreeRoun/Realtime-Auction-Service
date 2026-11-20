@@ -9,8 +9,9 @@ import java.util.UUID;
 // seller/winner는 지연 로딩(LAZY) 연관관계. 프록시의 식별자(getId())만 읽는 건 세션이 이미
 // 닫혀 있어도 안전하지만(Hibernate가 프록시 생성 시점에 FK 값을 이미 들고 있음),
 // getUsername()처럼 실제 컬럼을 읽으려면 그 프록시가 미리 초기화돼 있어야 한다(LazyInitializationException).
-// 그래서 sellerUsername을 쓰는 호출부는 ProductRepository에서 "join fetch p.seller"로
-// seller까지 함께 조회한 Product만 이 메서드에 넘겨야 한다.
+// 그래서 sellerUsername/winnerUsername을 쓰는 호출부는 ProductRepository에서 "join fetch p.seller"와
+// "left join fetch p.winner"로 함께 조회한 Product만 이 메서드에 넘겨야 한다
+// (winner는 낙찰 전에는 null이라 inner join이 아니라 left join이어야 상품이 사라지지 않는다).
 
 public record ProductResponse(
         UUID id,
@@ -25,6 +26,7 @@ public record ProductResponse(
         LocalDateTime startAt,
         LocalDateTime endAt,
         UUID winnerId,
+        String winnerUsername,
         LocalDateTime createdAt,
         String imageUrl
 ) {
@@ -42,6 +44,7 @@ public record ProductResponse(
                 product.getStartAt(),
                 product.getEndAt(),
                 product.getWinner() != null ? product.getWinner().getId() : null,
+                product.getWinner() != null ? product.getWinner().getUsername() : null,
                 product.getCreatedAt(),
                 product.getImageUrl());
     }
