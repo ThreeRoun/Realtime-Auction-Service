@@ -18,7 +18,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import javax.crypto.SecretKey;
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.util.Map;
 import java.util.TimeZone;
 import java.util.UUID;
@@ -73,10 +73,11 @@ class AuthControllerTest {
         assertThat(subject).isEqualTo(user.getId().toString());
     }
 
-    // 프론트(Navbar)가 expiresAt에 "Z"를 붙여 UTC로 해석한다 (PR #93). 서버 기본 시간대를 한국 시각으로 바꿔도
-    // (이슈 #152, AuctionEngineApplication) 이 값은 UTC 기준을 유지해야 로그인 만료 표시가 어긋나지 않는다.
+    // 프론트(Navbar)는 expiresAt을 시간대 표시 없이 브라우저 로컬(한국) 시각으로 해석한다 (이슈 #152).
+    // 그래서 이 값은 마감 시각 등 다른 시각 필드와 같은 서버 시간대(한국 시각) 기준이어야 한다.
+    // 누군가 다시 UTC 등으로 바꾸면 프론트의 로그인 만료 판단이 9시간 어긋난다.
     @Test
-    void 로그인_만료_시각은_서버_시간대와_무관하게_UTC_기준이다() throws Exception {
+    void 로그인_만료_시각은_다른_시각_필드와_같은_서버_시간대_기준이다() throws Exception {
         TimeZone original = TimeZone.getDefault();
         try {
             // 운영에서 main()이 적용하는 서버 시간대(한국 시각)를 흉내 낸다
@@ -94,8 +95,8 @@ class AuthControllerTest {
 
             LocalDateTime expiresAt = LocalDateTime.parse((String) objectMapper.readValue(response, Map.class)
                     .get("expiresAt"));
-            LocalDateTime expectedUtc = LocalDateTime.now(ZoneOffset.UTC).plusMinutes(expirationMinutes);
-            assertThat(Duration.between(expectedUtc, expiresAt).abs()).isLessThan(Duration.ofMinutes(2));
+            LocalDateTime expectedSeoul = LocalDateTime.now(ZoneId.of("Asia/Seoul")).plusMinutes(expirationMinutes);
+            assertThat(Duration.between(expectedSeoul, expiresAt).abs()).isLessThan(Duration.ofMinutes(2));
         } finally {
             TimeZone.setDefault(original);
         }

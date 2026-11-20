@@ -9,7 +9,9 @@ function hasValidToken() {
     return false;
   }
 
-  const expirationTime = Date.parse(expiresAt + "Z");
+  // 엔진의 expiresAt은 마감 시각 등과 같은 한국 시각이고 시간대 표시가 없다. Date.parse는 시간대 표시가 없는
+  // 날짜-시각 문자열을 브라우저 로컬 시각으로 읽으므로 그대로 넘긴다 (예전에는 "Z"를 붙여 UTC로 읽었다).
+  const expirationTime = Date.parse(expiresAt);
 
   if (!Number.isFinite(expirationTime) || Date.now() >= expirationTime) {
     localStorage.removeItem("accessToken");
@@ -48,7 +50,7 @@ function Navbar() {
     }
 
     const expiresAt = localStorage.getItem("expiresAt");
-    const expirationTime = Date.parse(expiresAt ? expiresAt + "Z" : "");
+    const expirationTime = Date.parse(expiresAt ?? "");
     const remainingTime = expirationTime - Date.now();
 
     if (!Number.isFinite(remainingTime) || remainingTime <= 0) {
