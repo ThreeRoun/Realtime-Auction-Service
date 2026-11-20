@@ -1,5 +1,8 @@
-
 import { test, expect } from "@playwright/test";
+
+// 마감 시각이 지나면 입찰 버튼이 비활성화되므로(이슈 #153), 입찰이 가능한 상품의 마감은 고정 날짜가 아니라
+// "지금부터 1년 뒤"로 둔다. 고정 날짜를 쓰면 그 날짜가 지나는 순간 테스트가 깨진다.
+const FAR_FUTURE_END_AT = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
 
 test("상품 목록에서 경매 참여를 클릭하면 상세 페이지로 이동한다", async ({ page }) => {
   const product = {
@@ -13,7 +16,7 @@ test("상품 목록에서 경매 참여를 클릭하면 상세 페이지로 이�
     sellerUsername: "test-seller",
     status: "ACTIVE",
     startAt: "2026-11-01T10:00:00Z",
-    endAt: "2026-12-01T10:00:00Z",
+    endAt: FAR_FUTURE_END_AT,
     winnerId: null,
     imageUrl: null,
     createdAt: "2026-11-01T10:00:00Z",
@@ -61,7 +64,7 @@ test("입찰 요청이 성공하면 성공 메시지가 표시된다", async ({ 
     sellerUsername: "test-seller",
     status: "ACTIVE",
     startAt: "2026-11-01T10:00:00Z",
-    endAt: "2026-12-01T10:00:00Z",
+    endAt: FAR_FUTURE_END_AT,
     winnerId: null,
     imageUrl: null,
     createdAt: "2026-11-01T10:00:00Z",
@@ -142,7 +145,7 @@ test("WebSocket 입찰 이벤트가 발생하면 상세 페이지 현재가가 �
     sellerUsername: "test-seller",
     status: "ACTIVE",
     startAt: "2026-11-01T10:00:00Z",
-    endAt: "2026-12-01T10:00:00Z",
+    endAt: FAR_FUTURE_END_AT,
     winnerId: null,
     imageUrl: null,
     createdAt: "2026-11-01T10:00:00Z",
@@ -210,7 +213,7 @@ test("경매 종료 이벤트 후 낙찰 결과가 표시되고 추가 입찰이
     sellerUsername: "test-seller",
     status: "ACTIVE",
     startAt: "2026-11-01T10:00:00Z",
-    endAt: "2026-12-01T10:00:00Z",
+    endAt: FAR_FUTURE_END_AT,
     winnerId: null,
     imageUrl: null,
     createdAt: "2026-11-01T10:00:00Z",
@@ -288,7 +291,7 @@ const bidTestProduct = {
   sellerUsername: "test-seller",
   status: "ACTIVE",
   startAt: "2026-11-01T10:00:00Z",
-  endAt: "2026-12-01T10:00:00Z",
+  endAt: FAR_FUTURE_END_AT,
   winnerId: null,
   imageUrl: null,
   createdAt: "2026-11-01T10:00:00Z",
@@ -516,4 +519,165 @@ test("입찰 이력에 닉네임이 없으면 최고 입찰자를 ID로 표시�
   await page.goto("http://localhost:5173/products/test-product-1");
 
   await expect(page.getByText("최고 입찰자: test-user-1")).toBeVisible();
+});
+
+// 이슈 #153 - 마감 이후 상품에서는 입찰 버튼이 막혀야 한다. 예전에는 실시간 마감 이벤트(auction_closed)를 받아야만
+// 막혀서, 이미 마감된 상품을 열거나 이벤트를 놓치면 입찰할 수 있는 것처럼 보였다.
+async function mockClosedProductPage(
+  page: import("@playwright/test").Page,
+  product: Record<string, unknown>,
+  bids: Record<string, unknown>[] = []
+) {
+  await page.route(/\/api\/products(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([product]),
+    });
+  });
+
+  await page.route("**/api/products/test-product-1/bids", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(bids),
+    });
+  });
+}
+
+test("이미 낙찰된 상품을 열면 낙찰 결과가 보이고 입찰 버튼이 비활성화된다", async ({ page }) => {
+  await mockClosedProductPage(
+    page,
+    {
+      ...bidTestProduct,
+      status: "SOLD",
+      endAt: "2026-11-10T10:00:00Z",
+      currentPrice: 150000,
+      winnerId: "winner-1",
+      winnerUsername: "alice",
+    },
+    [
+      {
+        bidId: "bid-1",
+        bidderId: "winner-1",
+        bidderUsername: "alice",
+        amount: 150000,
+        bidAt: "2026-11-10T09:59:00Z",
+        isValid: true,
+      },
+    ]
+  );
+
+  await page.goto("http://localhost:5173/products/test-product-1");
+
+  await expect(page.getByRole("heading", { name: "경매 종료" })).toBeVisible();
+  await expect(page.getByText("낙찰자: alice")).toBeVisible();
+  await expect(page.getByText("최종 낙찰가: 150,000원")).toBeVisible();
+  await expect(page.getByRole("button", { name: "경매 종료" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "+10,000원" })).toBeDisabled();
+});
+
+test("유찰된 상품을 열면 유찰 안내가 보이고 입찰 버튼이 비활성화된다", async ({ page }) => {
+  await mockClosedProductPage(page, {
+    ...bidTestProduct,
+    status: "UNSOLD",
+    endAt: "2026-11-10T10:00:00Z",
+    winnerId: null,
+  });
+
+  await page.goto("http://localhost:5173/products/test-product-1");
+
+  await expect(page.getByText("낙찰자가 없어 유찰되었습니다.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "경매 종료" })).toBeDisabled();
+});
+
+// 마감 처리는 상품의 현재가를 낙찰가로 바꾸지 않는다. 크레딧 부족으로 차순위가 낙찰되면 현재가(150,000원)와
+// 낙찰가(140,000원)가 다르므로, 낙찰자의 입찰 이력에서 낙찰가를 찾아 보여준다.
+test("차순위가 낙찰된 상품은 현재가가 아니라 낙찰자의 입찰가를 낙찰가로 보여준다", async ({ page }) => {
+  await mockClosedProductPage(
+    page,
+    {
+      ...bidTestProduct,
+      status: "SOLD",
+      endAt: "2026-11-10T10:00:00Z",
+      currentPrice: 150000,
+      winnerId: "second-1",
+      winnerUsername: "bob",
+    },
+    [
+      {
+        bidId: "bid-1",
+        bidderId: "first-1",
+        bidderUsername: "alice",
+        amount: 150000,
+        bidAt: "2026-11-10T09:59:00Z",
+        isValid: true,
+      },
+      {
+        bidId: "bid-2",
+        bidderId: "second-1",
+        bidderUsername: "bob",
+        amount: 140000,
+        bidAt: "2026-11-10T09:58:00Z",
+        isValid: true,
+      },
+    ]
+  );
+
+  await page.goto("http://localhost:5173/products/test-product-1");
+
+  await expect(page.getByText("낙찰자: bob")).toBeVisible();
+  await expect(page.getByText("최종 낙찰가: 140,000원")).toBeVisible();
+});
+
+test("마감 시각이 지났지만 아직 마감 처리 전인 상품은 입찰 버튼이 비활성화되고 집계 안내가 보인다", async ({ page }) => {
+  await mockClosedProductPage(page, {
+    ...bidTestProduct,
+    status: "IN_PROGRESS",
+    endAt: "2026-11-10T10:00:00Z",
+  });
+
+  await page.goto("http://localhost:5173/products/test-product-1");
+
+  await expect(
+    page.getByText("경매가 마감되었습니다. 낙찰 결과를 집계하는 중입니다.")
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "경매 종료" })).toBeDisabled();
+});
+
+// 마감 판단을 "한번 켜지면 안 꺼지는 값"이 아니라 현재 시각과 endAt에서 매번 계산하는 이유:
+// 마감 직전 입찰로 안티 스나이핑 연장 이벤트가 오면 endAt이 늘어나므로 다시 입찰할 수 있어야 한다.
+test("마감 시각이 지나 입찰이 막혀도 마감이 연장되면 다시 입찰할 수 있다", async ({ page }) => {
+  await mockClosedProductPage(page, { ...bidTestProduct });
+
+  let sendEndAt: ((endAt: string) => void) | undefined;
+
+  await page.routeWebSocket(/productId=test-product-1/, (ws) => {
+    ws.onMessage(() => {});
+
+    sendEndAt = (endAt) => {
+      ws.send(
+        JSON.stringify({
+          event: "auction_extended",
+          product_id: "test-product-1",
+          new_end_at: endAt,
+        })
+      );
+    };
+  });
+
+  await page.goto("http://localhost:5173/products/test-product-1");
+
+  await expect(page.getByRole("button", { name: "입찰하기" })).toBeEnabled();
+  await expect.poll(() => Boolean(sendEndAt)).toBe(true);
+
+  // 마감이 곧 지나는 시각으로 바뀌면 시간이 지난 뒤 입찰이 막힌다
+  sendEndAt!(new Date(Date.now() + 1500).toISOString());
+  await expect(page.getByRole("button", { name: "경매 종료" })).toBeDisabled({
+    timeout: 8000,
+  });
+
+  // 안티 스나이핑 연장 이벤트가 오면 다시 입찰할 수 있다
+  sendEndAt!(FAR_FUTURE_END_AT);
+  await expect(page.getByRole("button", { name: "입찰하기" })).toBeEnabled();
 });
