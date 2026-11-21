@@ -65,3 +65,36 @@ Alloy가 각 로그에 붙이는 라벨입니다.
 
 여러 서비스의 로그를 시간순으로 엮어 Claude API로 장애 원인을 분석하는 스크립트는
 [ai-log-analyzer/README.md](ai-log-analyzer/README.md)를 참고하세요.
+
+## 트레이스 (Tempo)
+
+앱이 OpenTelemetry(OTLP)로 보낸 트레이스를 Alloy가 받아 Tempo에 저장하고, Grafana에서 조회합니다.
+
+```text
+앱(엔진, relay) ──OTLP──▶ Alloy(4317 gRPC / 4318 HTTP) ──▶ Tempo ◀── Grafana
+```
+
+- Tempo 버전: 2.10.x (3.x는 단일 실행에도 Kafka가 필요해서 2.10 사용, 2027-04까지 유지보수)
+- 보관 기간: 7일 (Loki와 같게)
+- 앱은 Alloy로 보냅니다. compose 안에서는 `alloy:4317`/`alloy:4318`, Mac에서 직접 실행할 때는 `localhost:4317`/`localhost:4318`
+
+### 수집 경로 확인 (테스트 트레이스)
+
+```bash
+python3 logging/tempo/send_test_trace.py
+```
+
+출력된 `trace_id`를 Grafana(`http://localhost:3001`) → Explore → Tempo → TraceQL에 붙여 넣으면
+부모 span(`POST /api/bids (테스트)`) 안에 자식 span(`redis publish (테스트)`)이 보입니다.
+
+### 트레이스 ↔ 로그 연결
+
+- 트레이스 → 로그: span 옆 LOG 아이콘을 누르면 같은 `trace_id`가 들어 있는 Loki 로그를 찾습니다.
+- 로그 → 트레이스: 로그 줄에 `"trace_id":"..."`가 있으면 Grafana가 링크로 만들어 Tempo에서 엽니다.
+- 로그에 `trace_id`가 찍히려면 엔진, relay에 OpenTelemetry 계측이 필요합니다 (트레이스 도입 이슈 참고).
+
+### 주의: Loki 데이터 소스 uid 변경
+
+Tempo 연결을 위해 로컬 Loki 데이터 소스의 uid를 k8s와 같은 `loki`로 고정했습니다.
+기존 로컬 Grafana에는 uid 없이 등록돼 있어서, `loki.yml`의 `deleteDatasources`로
+시작할 때마다 지우고 다시 등록합니다. 로그 데이터에는 영향이 없습니다.
