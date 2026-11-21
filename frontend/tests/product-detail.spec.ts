@@ -274,3 +274,246 @@ test("경매 종료 이벤트 후 낙찰 결과가 표시되고 추가 입찰이
     page.getByRole("button", { name: "+10,000원" })
   ).toBeDisabled();
 });
+
+// 이슈 #150 - 입찰이 실패했을 때 "입찰 요청에 실패했습니다." 하나로 뭉뚱그리지 않고 엔진이 내려주는 사유(code)별로 안내한다.
+// 엔진의 message에는 상품 UUID가 섞여 있어서 화면에 그대로 보여주면 안 되므로, 내부 ID가 노출되지 않는 것도 함께 확인한다.
+const bidTestProduct = {
+  id: "test-product-1",
+  title: "테스트용 노트북",
+  description: "Playwright 테스트 상품",
+  startingPrice: 100000,
+  currentPrice: 120000,
+  bidUnit: 10000,
+  sellerId: "seller-1",
+  sellerUsername: "test-seller",
+  status: "ACTIVE",
+  startAt: "2026-11-01T10:00:00Z",
+  endAt: "2026-12-01T10:00:00Z",
+  winnerId: null,
+  imageUrl: null,
+  createdAt: "2026-11-01T10:00:00Z",
+};
+
+const PRODUCT_UUID_IN_ENGINE_MESSAGE = "3f1e2b7a-0000-4000-8000-000000000001";
+
+for (const { code, status, expected } of [
+  {
+    code: "SELF_BID_NOT_ALLOWED",
+    status: 403,
+    expected: "본인이 등록한 상품에는 입찰할 수 없습니다.",
+  },
+  {
+    code: "BID_COOLDOWN_ACTIVE",
+    status: 429,
+    expected: "방금 입찰하셨습니다. 잠시 후 다시 입찰해 주세요.",
+  },
+  {
+    code: "AUCTION_NOT_IN_PROGRESS",
+    status: 409,
+    expected: "진행 중인 경매가 아닙니다.",
+  },
+  {
+    code: "SOMETHING_UNKNOWN",
+    status: 500,
+    expected: "입찰 요청에 실패했습니다.",
+  },
+]) {
+  test(`입찰이 ${code}(${status})로 거절되면 사유에 맞는 안내가 표시되고 내부 ID는 노출되지 않는다`, async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem("accessToken", "playwright-test-token");
+    });
+
+    await page.route(/\/api\/products(?:\?.*)?$/, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([bidTestProduct]),
+      });
+    });
+
+    await page.route("**/api/products/test-product-1/bids", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([]),
+      });
+    });
+
+    await page.route("**/api/bids", async (route) => {
+      await route.fulfill({
+        status,
+        contentType: "application/json",
+        body: JSON.stringify({
+          code,
+          message: `엔진 내부 메시지: ${PRODUCT_UUID_IN_ENGINE_MESSAGE}`,
+        }),
+      });
+    });
+
+    await page.goto("http://localhost:5173/products/test-product-1");
+    await page.getByPlaceholder("입찰 금액을 입력하세요").fill("130000");
+    await page.getByRole("button", { name: "입찰하기" }).click();
+
+    await expect(page.getByText(expected)).toBeVisible();
+    await expect(page.getByText(PRODUCT_UUID_IN_ENGINE_MESSAGE)).toHaveCount(0);
+  });
+}
+
+// 내가 화면을 보는 사이 다른 사람이 먼저 올린 경우: 화면의 현재가(120,000원)로는 최소 입찰가가 130,000원이지만
+// 서버가 알려준 값(135,000원)이 정확하므로 그 값을 보여준다.
+test("가격을 넘지 못한 입찰이면 서버가 알려준 최소 입찰가를 보여준다", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("accessToken", "playwright-test-token");
+  });
+
+  await page.route(/\/api\/products(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([bidTestProduct]),
+    });
+  });
+
+  await page.route("**/api/products/test-product-1/bids", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([]),
+    });
+  });
+
+  await page.route("**/api/bids", async (route) => {
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        bidId: "test-bid-1",
+        productId: "test-product-1",
+        bidderId: "test-user-1",
+        amount: 130000,
+        bidAt: "2026-11-12T10:00:00Z",
+        isValid: false,
+        reason: "AMOUNT_TOO_LOW",
+        minNextBid: 135000,
+      }),
+    });
+  });
+
+  await page.goto("http://localhost:5173/products/test-product-1");
+  await page.getByPlaceholder("입찰 금액을 입력하세요").fill("130000");
+  await page.getByRole("button", { name: "입찰하기" }).click();
+
+  await expect(
+    page.getByText("현재 최소 입찰가는 135,000원입니다.")
+  ).toBeVisible();
+});
+
+test("엔진이 최소 입찰가를 내려주지 않으면 화면의 현재가와 입찰 단위로 계산해서 보여준다", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("accessToken", "playwright-test-token");
+  });
+
+  await page.route(/\/api\/products(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([bidTestProduct]),
+    });
+  });
+
+  await page.route("**/api/products/test-product-1/bids", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([]),
+    });
+  });
+
+  await page.route("**/api/bids", async (route) => {
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        bidId: "test-bid-1",
+        productId: "test-product-1",
+        bidderId: "test-user-1",
+        amount: 130000,
+        bidAt: "2026-11-12T10:00:00Z",
+        isValid: false,
+      }),
+    });
+  });
+
+  await page.goto("http://localhost:5173/products/test-product-1");
+  await page.getByPlaceholder("입찰 금액을 입력하세요").fill("130000");
+  await page.getByRole("button", { name: "입찰하기" }).click();
+
+  await expect(
+    page.getByText("현재 최소 입찰가는 130,000원입니다.")
+  ).toBeVisible();
+});
+
+// 이슈 #150 - 최고 입찰자가 UUID가 아니라 닉네임으로 보인다. 닉네임을 아직 안 주는 엔진이면 예전처럼 ID로 보인다.
+test("입찰 이력에 닉네임이 있으면 최고 입찰자가 닉네임으로 표시된다", async ({ page }) => {
+  await page.route(/\/api\/products(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([bidTestProduct]),
+    });
+  });
+
+  await page.route("**/api/products/test-product-1/bids", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          bidId: "test-bid-1",
+          bidderId: "d6d219d9-b266-44e6-a220-652f9525942e",
+          bidderUsername: "alice",
+          amount: 120000,
+          bidAt: "2026-11-12T10:00:00Z",
+          isValid: true,
+        },
+      ]),
+    });
+  });
+
+  await page.goto("http://localhost:5173/products/test-product-1");
+
+  await expect(page.getByText("최고 입찰자: alice")).toBeVisible();
+  await expect(
+    page.getByText("d6d219d9-b266-44e6-a220-652f9525942e")
+  ).toHaveCount(0);
+});
+
+test("입찰 이력에 닉네임이 없으면 최고 입찰자를 ID로 표시한다", async ({ page }) => {
+  await page.route(/\/api\/products(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([bidTestProduct]),
+    });
+  });
+
+  await page.route("**/api/products/test-product-1/bids", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          bidId: "test-bid-1",
+          bidderId: "test-user-1",
+          amount: 120000,
+          bidAt: "2026-11-12T10:00:00Z",
+          isValid: true,
+        },
+      ]),
+    });
+  });
+
+  await page.goto("http://localhost:5173/products/test-product-1");
+
+  await expect(page.getByText("최고 입찰자: test-user-1")).toBeVisible();
+});
