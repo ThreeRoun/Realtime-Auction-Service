@@ -28,6 +28,8 @@ Content-Type: application/json
 | --- | --- | --- |
 | startAt | datetime (선택) | 프론트 상품 등록 폼에 시작 시각 입력란이 없어서(등록하면 바로 시작한다고 가정) 선택값. 생략하면 서버가 현재 시각으로 채운다. |
 
+⚠️ **시각은 시간대 정보가 없는 `LocalDateTime`이고, 서버는 한국 시각(`Asia/Seoul`)을 기준으로 마감 처리한다.** 서버가 UTC 컨테이너에서 돌아도 같은 기준이 되도록 `AuctionEngineApplication`이 JVM 기본 시간대를 고정한다(환경변수 `APP_TIMEZONE`으로 변경 가능, 잘못된 값이면 기동 실패). 요청의 `startAt`/`endAt`과 응답의 `startAt`/`endAt`/`createdAt`/입찰 시각(`bidAt`)이 모두 이 기준이다.
+
 ### 응답 - 성공 (201 Created)
 
 Product 객체 하나 (아래 GET 응답과 동일한 모양).

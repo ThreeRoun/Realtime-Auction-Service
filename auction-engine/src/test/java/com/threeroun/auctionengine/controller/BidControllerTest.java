@@ -128,6 +128,31 @@ class BidControllerTest {
                 .andExpect(status().isConflict());
     }
 
+    // 이슈 #152 - 마감 처리는 스케줄러가 주기적으로 하므로, 마감 시각이 지났어도 상태가 아직 진행중인 구간이 있다.
+    // 그 구간에 들어온 입찰은 상태가 아니라 마감 시각을 보고 거절해야 한다.
+    @Test
+    void 마감_시각이_지났으면_상태가_진행중이어도_409를_반환하고_가격은_그대로다() throws Exception {
+        User seller = user("seller");
+        User bidder = user("bidder");
+        Product product = new Product("마감 시각이 지난 상품", "설명", STARTING_PRICE, BID_UNIT,
+                seller, LocalDateTime.now().minusHours(2), LocalDateTime.now().minusSeconds(1));
+        product.setStatus(ProductStatus.IN_PROGRESS);
+        productRepository.save(product);
+
+        String requestBody = objectMapper.writeValueAsString(Map.of(
+                "productId", product.getId().toString(),
+                "amount", 100_000));
+
+        mockMvc.perform(post("/api/bids")
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(bidder))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isConflict());
+
+        Product reloaded = productRepository.findById(product.getId()).orElseThrow();
+        assertThat(reloaded.getCurrentPrice()).isEqualTo(STARTING_PRICE);
+    }
+
     @Test
     void amount가_없으면_400을_반환한다() throws Exception {
         User seller = user("seller");

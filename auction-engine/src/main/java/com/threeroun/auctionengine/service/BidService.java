@@ -62,6 +62,18 @@ public class BidService {
             throw new AuctionNotInProgressException(productId, product.getStatus());
         }
 
+        // 마감 시각이 지났으면 상태가 아직 진행중이어도 입찰을 받지 않는다 (이슈 #152).
+        // 마감 처리(상태 변경, 낙찰, 크레딧 차감)는 스케줄러가 5초 간격으로 하므로 상태만 보면 "마감 시각 ~ 다음
+        // 스케줄러 실행(밀리면 더 길게)" 사이에 들어온 입찰이 받아들여져 가격이 오르고, 아래 안티 스나이핑
+        // 판정에서는 마감 시각이 이미 지났는데도 "마감 임박"으로 보고 마감을 연장해 버릴 수 있다.
+        // 상품 row를 잠근 뒤에 판정하므로 같은 상품의 동시 요청들이 같은 기준으로 판정된다.
+        // 비교 기준은 스케줄러(endAt <= now이면 마감)와 같게 "마감 시각과 같거나 늦으면 거절"이다.
+        LocalDateTime now = LocalDateTime.now();
+        if (!now.isBefore(product.getEndAt())) {
+            metrics.bidRejected(AuctionMetrics.BidRejectionReason.AUCTION_NOT_IN_PROGRESS);
+            throw new AuctionNotInProgressException(productId, product.getEndAt());
+        }
+
         // 판매자가 자기 상품에 입찰해서 가격을 띄우는 자전 거래(shill bidding) 방지
         if (product.getSeller().getId().equals(bidderId)) {
             metrics.bidRejected(AuctionMetrics.BidRejectionReason.SELF_BID_NOT_ALLOWED);
@@ -71,7 +83,6 @@ public class BidService {
         // 쿨다운: 승패(valid) 상관없이 "이 유저가 이 상품에 요청을 보낸 시각" 자체를 본다 -
         // 매크로로 연타하면 지는 입찰도 반복 생성되므로, 이긴 입찰만 보면 쿨다운을 우회할 수 있다.
         Optional<Bid> lastBid = bidRepository.findFirstByProductIdAndBidderIdOrderByBidAtDesc(productId, bidderId);
-        LocalDateTime now = LocalDateTime.now();
         if (lastBid.isPresent() && Duration.between(lastBid.get().getBidAt(), now).compareTo(BID_COOLDOWN) < 0) {
             metrics.bidRejected(AuctionMetrics.BidRejectionReason.COOLDOWN_ACTIVE);
             throw new BidCooldownException(productId);
