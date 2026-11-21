@@ -32,3 +32,43 @@ textarea {
 button {
   cursor: pointer;
 }
+
+/* 마이페이지 경매 카드 */
+.mypage-auctions ul {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.mypage-auctions .auction-card {
+  padding: 16px;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.auction-card-image,
+.auction-card-image-placeholder {
+  width: 100%;
+  height: 160px;
+  border-radius: 8px;
+  object-fit: contain;
+}
+
+.auction-card-image-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f3f4f6;
+  color: #777;
+}
+
+.auction-card h3 {
+  margin: 12px 0;
+}
+
+.auction-card p {
+  margin: 8px 0;
+}
