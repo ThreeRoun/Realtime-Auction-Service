@@ -79,13 +79,18 @@ class AuctionClosingServiceTest {
     @Test
     void 최고가_입찰자가_크레딧_부족이면_차순위에게_승계된다() {
         User seller = user("seller", 0);
-        User richBidder = user("rich-bidder", 0); // 돈이 없음
+        User richBidder = user("rich-bidder", 100_000);
         User poorBidder = user("poor-bidder", 100_000);
         Product product = futureProduct(seller);
 
-        // poorBidder가 먼저 낮은 가격, richBidder가 나중에 더 높은 가격 (근데 richBidder는 크레딧 0)
+        // poorBidder가 먼저 낮은 가격, richBidder가 나중에 더 높은 가격으로 입찰한다.
+        // 입찰 시점엔 크레딧 확인(#163)을 통과하지만, 마감 전에 다른 곳에서 크레딧을 다 써 버린 상황을 만든다
+        // (입찰이 크레딧을 묶더라도 낙찰 처리의 "부족하면 차순위" 안전장치는 그대로 동작해야 한다).
         bidService.placeBid(product.getId(), poorBidder.getId(), STARTING_PRICE + BID_UNIT);
         bidService.placeBid(product.getId(), richBidder.getId(), STARTING_PRICE + BID_UNIT * 2);
+        User drained = userRepository.findById(richBidder.getId()).orElseThrow();
+        drained.deductCredit(drained.getCredit());
+        userRepository.save(drained);
         expireNow(product.getId());
 
         closingService.closeIfExpired(product.getId());

@@ -31,7 +31,7 @@ class BidServiceAntiSnipingTest {
 
     private User user(String role) {
         String suffix = UUID.randomUUID().toString().substring(0, 8);
-        return userRepository.save(new User(role + "-" + suffix, role + "-" + suffix + "@test.com", "hash"));
+        return userRepository.save(new User(role + "-" + suffix, role + "-" + suffix + "@test.com", "hash", 10_000_000));
     }
 
     private Product product(User seller, LocalDateTime endAt) {

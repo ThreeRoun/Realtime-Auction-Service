@@ -51,7 +51,7 @@ class BidServiceConcurrencyTest {
     void setUp() {
         // 테스트 메서드마다 새로 실행되므로 username/email 유니크 제약에 걸리지 않게 매번 고유값 사용
         String suffix = java.util.UUID.randomUUID().toString().substring(0, 8);
-        seller = userRepository.save(new User("seller-" + suffix, "seller-" + suffix + "@test.com", "hash"));
+        seller = userRepository.save(new User("seller-" + suffix, "seller-" + suffix + "@test.com", "hash", 10_000_000));
 
         Product newProduct = new Product("테스트 상품", "동시성 테스트용", STARTING_PRICE, BID_UNIT,
                 seller, LocalDateTime.now().minusMinutes(1), LocalDateTime.now().plusHours(1));
@@ -66,7 +66,7 @@ class BidServiceConcurrencyTest {
         List<User> users = new ArrayList<>();
         for (int i = 0; i < count; i++) {
             String suffix = UUID.randomUUID().toString().substring(0, 8);
-            users.add(userRepository.save(new User("bidder-" + suffix, "bidder-" + suffix + "@test.com", "hash")));
+            users.add(userRepository.save(new User("bidder-" + suffix, "bidder-" + suffix + "@test.com", "hash", 10_000_000)));
         }
         return users;
     }

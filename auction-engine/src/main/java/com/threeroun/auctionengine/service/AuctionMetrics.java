@@ -17,7 +17,8 @@ public class AuctionMetrics {
     // 사유는 BidService.placeBid가 입찰을 거절하는 경로 그대로 고정된 집합이라 enum으로 못박아서,
     // 호출하는 쪽에서 오타로 새 사유 문자열을 만들어버리는 걸 컴파일 타임에 막는다.
     public enum BidRejectionReason {
-        PRODUCT_NOT_FOUND, AUCTION_NOT_IN_PROGRESS, SELF_BID_NOT_ALLOWED, COOLDOWN_ACTIVE, AMOUNT_TOO_LOW
+        PRODUCT_NOT_FOUND, AUCTION_NOT_IN_PROGRESS, SELF_BID_NOT_ALLOWED, COOLDOWN_ACTIVE, AMOUNT_TOO_LOW,
+        INSUFFICIENT_CREDIT
     }
 
     private final Counter bidPlacedCounter;
