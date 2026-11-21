@@ -1,9 +1,25 @@
 # Grafana 시작 시 Loki 데이터 소스를 자동으로 등록한다.
 apiVersion: 1
 
+# 예전 설정은 uid 없이 등록돼 있어서, uid를 loki로 바꾸면 기존 데이터 소스를 찾지 못한다.
+# 시작할 때 이름으로 지운 뒤 아래에서 다시 등록한다 (팀원들의 기존 로컬 Grafana에서도 그대로 동작하게)
+deleteDatasources:
+  - name: Loki
+    orgId: 1
+
 datasources:
   - name: Loki
     type: loki
+    # k8s(k8s/monitoring/config/grafana-datasources.yaml)와 같은 uid. Tempo의 trace -> log 연결이 이 uid를 가리킨다
+    uid: loki
     access: proxy
     url: http://loki:3100
     isDefault: true
+    jsonData:
+      # 로그 줄의 trace_id 값을 링크로 만들어, 누르면 Tempo에서 그 트레이스를 연다 (log -> trace)
+      derivedFields:
+        - name: trace_id
+          matcherRegex: '"trace_id":"(\w+)"'
+          datasourceUid: tempo
+          url: "$${__value.raw}"   # provisioning 파일에서는 $를 $$로 써야 그대로 들어간다
+          
