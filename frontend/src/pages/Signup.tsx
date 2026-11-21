@@ -7,7 +7,6 @@ function Signup() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [initialCredit, setInitialCredit] = useState("500000");
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -27,13 +26,6 @@ function Signup() {
       return;
     }
 
-    const credit = Number(initialCredit);
-
-    if (!Number.isSafeInteger(credit) || credit < 0) {
-      setErrorMessage("초기 크레딧은 0 이상의 정수여야 합니다.");
-      return;
-    }
-
     setIsSubmitting(true);
 
     try {
@@ -41,7 +33,6 @@ function Signup() {
         username: username.trim(),
         email: email.trim(),
         password,
-        initialCredit: credit,
       });
 
       navigate("/login");
@@ -97,16 +88,6 @@ function Signup() {
             value={confirmPassword}
             onChange={(event) => setConfirmPassword(event.target.value)}
             required
-          />
-
-          <label htmlFor="signup-credit">초기 크레딧 (선택)</label>
-          <input
-            id="signup-credit"
-            type="number"
-            min={0}
-            step={1}
-            value={initialCredit}
-            onChange={(event) => setInitialCredit(event.target.value)}
           />
 
           {errorMessage && <p role="alert">{errorMessage}</p>}
