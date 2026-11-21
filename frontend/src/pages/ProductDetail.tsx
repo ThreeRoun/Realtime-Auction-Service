@@ -210,6 +210,12 @@ function ProductDetail() {
     if (result.isValid) {
       setBidMessage(`${amount.toLocaleString()}원 입찰에 성공했습니다.`);
       setBidAmount("");
+    } else if (result.reason === "INSUFFICIENT_CREDIT") {
+      // 금액은 충분하지만 사용 가능 크레딧(보유 - 다른 진행중 경매에 묶인 금액)을 넘는 입찰이다.
+      // "더 높은 금액으로"라는 안내가 나가면 반대가 되므로 따로 안내한다.
+      setBidMessage(
+        "사용 가능한 크레딧이 부족합니다. 다른 경매에 묶인 크레딧을 확인해 주세요."
+      );
     } else {
       // 가격을 넘지 못한 입찰이다. 엔진이 다음 입찰의 최소 금액(minNextBid)을 내려주면 그 값을 쓴다 -
       // 내가 화면을 보는 사이 다른 사람이 먼저 올렸어도 서버 기준의 정확한 값이다.

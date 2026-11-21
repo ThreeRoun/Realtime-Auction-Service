@@ -2,6 +2,7 @@ package com.threeroun.auctionengine.controller;
 
 import com.threeroun.auctionengine.domain.User;
 import com.threeroun.auctionengine.repository.UserRepository;
+import com.threeroun.auctionengine.service.CreditService;
 import com.threeroun.auctionengine.service.DuplicateUserException;
 import com.threeroun.auctionengine.service.UserNotFoundException;
 import jakarta.validation.Valid;
@@ -26,10 +27,13 @@ public class UserController {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final CreditService creditService;
 
-    public UserController(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    public UserController(UserRepository userRepository, PasswordEncoder passwordEncoder,
+                          CreditService creditService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.creditService = creditService;
     }
 
     // 로그인한 사용자만 조회할 수 있다 (JwtAuthenticationFilter). 본인 조회면 이메일/크레딧까지 전체를,
@@ -40,7 +44,9 @@ public class UserController {
                                 @RequestAttribute(AUTH_USER_ID_ATTRIBUTE) UUID requesterId) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new UserNotFoundException(id));
-        return requesterId.equals(id) ? UserResponse.from(user) : UserResponse.publicView(user);
+        return requesterId.equals(id)
+                ? UserResponse.from(user, creditService.availableCredit(user))
+                : UserResponse.publicView(user);
     }
 
     // 회원가입. 로그인/토큰 발급은 아직 없다 - 여기서 만든 id를 다른 API(상품 등록의
@@ -58,6 +64,8 @@ public class UserController {
         String passwordHash = passwordEncoder.encode(request.password());
         int initialCredit = request.initialCredit() != null ? request.initialCredit() : 0;
         User user = new User(request.username(), request.email(), passwordHash, initialCredit);
-        return UserResponse.from(userRepository.save(user));
+        User saved = userRepository.save(user);
+        // 방금 가입해서 묶인 크레딧이 없으므로 사용 가능 크레딧 = 보유 크레딧
+        return UserResponse.from(saved, saved.getCredit());
     }
 }

@@ -411,6 +411,53 @@ test("가격을 넘지 못한 입찰이면 서버가 알려준 최소 입찰가�
   ).toBeVisible();
 });
 
+// 크레딧 부족(이슈 #163)은 금액이 낮은 게 아니므로 "더 높은 금액으로" 안내가 나가면 안 된다.
+test("사용 가능 크레딧이 부족해 거절되면 크레딧 부족 안내를 보여준다", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("accessToken", "playwright-test-token");
+  });
+
+  await page.route(/\/api\/products(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([bidTestProduct]),
+    });
+  });
+
+  await page.route("**/api/products/test-product-1/bids", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([]),
+    });
+  });
+
+  await page.route("**/api/bids", async (route) => {
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        bidId: "test-bid-1",
+        productId: "test-product-1",
+        bidderId: "test-user-1",
+        amount: 130000,
+        bidAt: "2026-11-12T10:00:00Z",
+        isValid: false,
+        reason: "INSUFFICIENT_CREDIT",
+        minNextBid: 130000,
+      }),
+    });
+  });
+
+  await page.goto("http://localhost:5173/products/test-product-1");
+  await page.getByPlaceholder("입찰 금액을 입력하세요").fill("130000");
+  await page.getByRole("button", { name: "입찰하기" }).click();
+
+  await expect(page.getByText("사용 가능한 크레딧이 부족합니다.")).toBeVisible();
+  await expect(page.getByText("더 높은 금액으로 입찰해 주세요")).toHaveCount(0);
+});
+
 test("엔진이 최소 입찰가를 내려주지 않으면 화면의 현재가와 입찰 단위로 계산해서 보여준다", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem("accessToken", "playwright-test-token");

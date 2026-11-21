@@ -17,20 +17,23 @@ public record UserResponse(
         String username,
         String email,
         Integer credit,
+        Long availableCredit,
         LocalDateTime createdAt
 ) {
-    // 본인에게 보여주는 전체 정보 (회원가입 응답, 내 정보 조회)
-    public static UserResponse from(User user) {
+    // 본인에게 보여주는 전체 정보 (회원가입 응답, 내 정보 조회).
+    // credit은 보유 크레딧, availableCredit은 거기서 진행중 경매에 묶인 금액을 뺀 값이다.
+    public static UserResponse from(User user, long availableCredit) {
         return new UserResponse(
                 user.getId(),
                 user.getUsername(),
                 user.getEmail(),
                 user.getCredit(),
+                availableCredit,
                 user.getCreatedAt());
     }
 
     // 타인에게 보여줘도 되는 정보만: id와 닉네임
     public static UserResponse publicView(User user) {
-        return new UserResponse(user.getId(), user.getUsername(), null, null, null);
+        return new UserResponse(user.getId(), user.getUsername(), null, null, null, null);
     }
 }
