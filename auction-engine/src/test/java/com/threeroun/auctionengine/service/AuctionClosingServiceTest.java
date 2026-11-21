@@ -77,6 +77,36 @@ class AuctionClosingServiceTest {
     }
 
     @Test
+    void 낙찰되면_낙찰가만큼_판매자에게_지급되고_낙찰자_차감액과_같다() {
+        User seller = user("seller", 50_000);
+        User bidder = user("bidder", 100_000);
+        Product product = futureProduct(seller);
+        int bidAmount = STARTING_PRICE + BID_UNIT;
+        bidService.placeBid(product.getId(), bidder.getId(), bidAmount);
+        expireNow(product.getId());
+
+        closingService.closeIfExpired(product.getId());
+
+        int sellerCredit = userRepository.findById(seller.getId()).orElseThrow().getCredit();
+        int bidderCredit = userRepository.findById(bidder.getId()).orElseThrow().getCredit();
+        assertThat(sellerCredit).isEqualTo(50_000 + bidAmount);
+        assertThat(bidderCredit).isEqualTo(100_000 - bidAmount);
+        // 돈이 사라지거나 생기지 않는다: 두 사람의 합계는 낙찰 전후로 같다
+        assertThat(sellerCredit + bidderCredit).isEqualTo(150_000);
+    }
+
+    @Test
+    void 유찰되면_판매자에게_지급되지_않는다() {
+        User seller = user("seller", 50_000);
+        Product product = futureProduct(seller);
+        expireNow(product.getId());
+
+        closingService.closeIfExpired(product.getId());
+
+        assertThat(userRepository.findById(seller.getId()).orElseThrow().getCredit()).isEqualTo(50_000);
+    }
+
+    @Test
     void 최고가_입찰자가_크레딧_부족이면_차순위에게_승계된다() {
         User seller = user("seller", 0);
         User richBidder = user("rich-bidder", 0); // 돈이 없음
