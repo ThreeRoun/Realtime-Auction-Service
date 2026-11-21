@@ -43,3 +43,38 @@ loki.write "local" {
     url = "http://loki:3100/loki/api/v1/push"
   }
 }
+
+// 5) 트레이스: 앱(엔진, relay)이 OpenTelemetry(OTLP)로 보낸 트레이스를 받아 Tempo로 전달한다.
+//    gRPC(4317), HTTP(4318) 둘 다 연다. 보내는 쪽 SDK마다 기본 프로토콜이 달라서
+//    (OTel Java 에이전트 2.x 기본값은 HTTP) 어느 쪽으로 보내도 받을 수 있게 한다.
+otelcol.receiver.otlp "apps" {
+  grpc {
+    endpoint = "0.0.0.0:4317"
+  }
+
+  http {
+    endpoint = "0.0.0.0:4318"
+  }
+
+  output {
+    traces = [otelcol.processor.batch.traces.input]
+  }
+}
+
+// 6) 트레이스를 모아서(batch) 한 번에 보낸다 (요청 수를 줄이기 위해)
+otelcol.processor.batch "traces" {
+  output {
+    traces = [otelcol.exporter.otlp.tempo.input]
+  }
+}
+
+// 7) Tempo로 전송 (compose 내부 통신이라 TLS 없이)
+otelcol.exporter.otlp "tempo" {
+  client {
+    endpoint = "tempo:4317"
+
+    tls {
+      insecure = true
+    }
+  }
+}
