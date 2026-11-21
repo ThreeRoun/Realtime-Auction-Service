@@ -25,19 +25,23 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
     // GET /api/products/{id}: seller가 LAZY 연관관계라, 응답(sellerUsername)을 만들 시점엔
     // 이미 트랜잭션/세션이 끝나 있다(open-in-view=false). join fetch로 조회 시점에 미리
     // 채워 넣어야 세션 밖에서도 seller.getUsername()이 안전하다.
-    @Query("select p from Product p join fetch p.seller where p.id = :id")
+    // winner(낙찰자)도 같은 이유로 가져온다(winnerUsername). 낙찰 전에는 null이므로 left join이어야 한다 -
+    // inner join이면 낙찰자가 없는 진행중 상품이 결과에서 통째로 사라진다. 아래 조회 쿼리들도 마찬가지다.
+    @Query("select p from Product p join fetch p.seller left join fetch p.winner where p.id = :id")
     Optional<Product> findByIdWithSeller(@Param("id") UUID id);
 
     // GET /api/products: 기본값(진행중 상품만) 조회용, 마감 임박순 정렬
-    @Query("select p from Product p join fetch p.seller where p.status in :statuses order by p.endAt asc")
+    @Query("select p from Product p join fetch p.seller left join fetch p.winner "
+            + "where p.status in :statuses order by p.endAt asc")
     List<Product> findByStatusInOrderByEndAtAsc(@Param("statuses") Collection<ProductStatus> statuses);
 
     // GET /api/products?status=XXX: 특정 상태만 조회
-    @Query("select p from Product p join fetch p.seller where p.status = :status order by p.endAt asc")
+    @Query("select p from Product p join fetch p.seller left join fetch p.winner "
+            + "where p.status = :status order by p.endAt asc")
     List<Product> findByStatusOrderByEndAtAsc(@Param("status") ProductStatus status);
 
     // GET /api/products?status=all: 전체 조회
-    @Query("select p from Product p join fetch p.seller order by p.endAt asc")
+    @Query("select p from Product p join fetch p.seller left join fetch p.winner order by p.endAt asc")
     List<Product> findAllByOrderByEndAtAsc();
 
     // 스케줄러: 마감 시각이 지났는데 아직 안 닫힌(진행중/마감연장) 상품 후보 조회

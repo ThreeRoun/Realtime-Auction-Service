@@ -92,6 +92,7 @@ public class BidService {
 
         int minNextBid = product.getCurrentPrice() + product.getBidUnit();
         boolean extended = false;
+        String reason = null;
         if (amount >= minNextBid) {
             bid.markValid();
             product.setCurrentPrice(amount);
@@ -111,6 +112,8 @@ public class BidService {
             // 여기서 예외를 던지면 @Transactional이 트랜잭션 전체를 롤백시켜서, 남겨야 할
             // "진 입찰" 기록 자체가 사라져 버리기 때문에 예외 대신 반환값(isValid)으로 성패를 알린다.
             metrics.bidRejected(AuctionMetrics.BidRejectionReason.AMOUNT_TOO_LOW);
+            // 사유를 응답에 실어 보낸다 - 프론트가 "왜 안 됐는지"를 사용자에게 알려줄 수 있게 (이슈 #148)
+            reason = BidResult.AMOUNT_TOO_LOW;
         }
         Bid savedBid = bidRepository.save(bid);
 
@@ -124,6 +127,9 @@ public class BidService {
             eventPublisher.publishEvent(new AuctionExtendedEvent(productId, product.getEndAt()));
             metrics.auctionExtended();
         }
-        return new BidResult(savedBid, extended);
+        // 처리 직후의 현재가 기준 "다음 입찰의 최소 금액". 이긴 입찰이면 방금 올라간 가격 + 단위,
+        // 진 입찰이면 가격이 그대로라 처음 계산한 minNextBid와 같다.
+        int nextMinBid = product.getCurrentPrice() + product.getBidUnit();
+        return new BidResult(savedBid, extended, reason, nextMinBid);
     }
 }

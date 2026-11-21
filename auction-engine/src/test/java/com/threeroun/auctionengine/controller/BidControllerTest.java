@@ -94,6 +94,63 @@ class BidControllerTest {
         assertThat(body.get("isValid")).isEqualTo(false);
     }
 
+    // 이슈 #148 - 프론트가 "왜 입찰이 안 됐는지"를 사용자에게 알려줄 수 있도록 응답에 사유를 싣는다.
+    private Map<?, ?> bid(User bidder, Product product, int amount) throws Exception {
+        String requestBody = objectMapper.writeValueAsString(Map.of(
+                "productId", product.getId().toString(),
+                "amount", amount));
+        String response = mockMvc.perform(post("/api/bids")
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(bidder))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        return objectMapper.readValue(response, Map.class);
+    }
+
+    @Test
+    void 최소_입찰가_미만으로_거절되면_사유와_다음_최소_입찰가를_알려준다() throws Exception {
+        User seller = user("seller");
+        User bidder = user("bidder");
+        Product product = productRepository.save(inProgressProduct(seller));
+
+        Map<?, ?> body = bid(bidder, product, STARTING_PRICE);
+
+        assertThat(body.get("isValid")).isEqualTo(false);
+        assertThat(body.get("reason")).isEqualTo("AMOUNT_TOO_LOW");
+        assertThat(((Number) body.get("minNextBid")).intValue()).isEqualTo(STARTING_PRICE + BID_UNIT);
+    }
+
+    @Test
+    void 유효한_입찰이면_사유는_없고_그_다음_최소_입찰가를_알려준다() throws Exception {
+        User seller = user("seller");
+        User bidder = user("bidder");
+        Product product = productRepository.save(inProgressProduct(seller));
+
+        Map<?, ?> body = bid(bidder, product, STARTING_PRICE + BID_UNIT);
+
+        assertThat(body.get("isValid")).isEqualTo(true);
+        assertThat(body.get("reason")).isNull();
+        assertThat(((Number) body.get("minNextBid")).intValue()).isEqualTo(STARTING_PRICE + 2 * BID_UNIT);
+    }
+
+    // 프론트가 화면의 현재가로 "최소 입찰가"를 계산하면 틀리는 상황: 내가 화면을 본 사이 다른 사람이 먼저 올렸다.
+    // 서버가 상품 row를 잠근 채로 계산한 값만이 이 순간의 정확한 최소 입찰가다.
+    @Test
+    void 다른_사람이_먼저_올려서_거절되면_올라간_가격_기준의_최소_입찰가를_알려준다() throws Exception {
+        User seller = user("seller");
+        User first = user("first");
+        User late = user("late");
+        Product product = productRepository.save(inProgressProduct(seller));
+
+        bid(first, product, STARTING_PRICE + BID_UNIT);
+        Map<?, ?> body = bid(late, product, STARTING_PRICE + BID_UNIT);
+
+        assertThat(body.get("isValid")).isEqualTo(false);
+        assertThat(body.get("reason")).isEqualTo("AMOUNT_TOO_LOW");
+        assertThat(((Number) body.get("minNextBid")).intValue()).isEqualTo(STARTING_PRICE + 2 * BID_UNIT);
+    }
+
     @Test
     void 존재하지_않는_상품이면_404를_반환한다() throws Exception {
         User bidder = user("bidder");
