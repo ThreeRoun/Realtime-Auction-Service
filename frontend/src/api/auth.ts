@@ -30,7 +30,6 @@ export interface SignupRequest {
   username: string;
   email: string;
   password: string;
-  initialCredit?: number;
 }
 
 export interface SignupResponse {
