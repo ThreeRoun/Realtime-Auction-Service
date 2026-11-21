@@ -12,8 +12,7 @@
 {
   "username": "경매왕",
   "email": "user@example.com",
-  "password": "비밀번호",
-  "initialCredit": 500000
+  "password": "비밀번호"
 }
 ```
 
@@ -22,7 +21,9 @@
 | username | string | 최대 50자, 중복 불가 |
 | email | string | 이메일 형식, 중복 불가 |
 | password | string | 4자 이상. BCrypt로 해시해서 저장한다 |
-| initialCredit | integer | 선택, 0 이상. 결제 연동이 없는 MVP라 별도 "충전" API가 없어서 가입 시 바로 크레딧을 부여하는 임시방편. 생략 시 0 |
+
+가입 크레딧은 요청으로 받지 않고 서버가 **500,000으로 고정**해서 준다(결제 연동이 없는 MVP).
+예전 클라이언트가 보내는 `initialCredit` 필드는 무시된다.
 
 ### 응답 - 성공 (201 Created)
 
