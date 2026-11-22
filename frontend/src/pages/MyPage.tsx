@@ -87,6 +87,12 @@ function MyPage() {
               <strong>보유 크레딧:</strong>{" "}
               {user.credit.toLocaleString()}원
             </p>
+            <p>
+              <strong>사용 가능 크레딧:</strong>{" "}
+              {user.availableCredit !== undefined
+                ? `${user.availableCredit.toLocaleString()}원`
+                : "정보를 불러올 수 없습니다."}
+            </p>
           </div>
         )}
       </section>

@@ -72,6 +72,7 @@ export interface UserProfile {
   username: string;
   email: string;
   credit: number;
+  availableCredit?: number;
   createdAt: string;
 }
 
