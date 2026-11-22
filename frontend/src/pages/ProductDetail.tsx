@@ -251,14 +251,16 @@ function ProductDetail() {
         "사용 가능한 크레딧이 부족합니다. 다른 경매에 묶인 크레딧을 확인해 주세요."
       );
     } else {
-      // 가격을 넘지 못한 입찰이다. 엔진이 다음 입찰의 최소 금액(minNextBid)을 내려주면 그 값을 쓴다 -
-      // 내가 화면을 보는 사이 다른 사람이 먼저 올렸어도 서버 기준의 정확한 값이다.
-      // 아직 그 필드가 없는 엔진이면 화면의 현재가 + 입찰 단위로 계산한 값을 대신 쓴다 (어긋날 수 있다).
-      const minNextBid = result.minNextBid ?? currentPrice + product.bidUnit;
+      if (result.reason === "INSUFFICIENT_CREDIT") {
+        setBidMessage("사용 가능한 크레딧이 부족하여 입찰할 수 없습니다.");
+      } else {
+        const minNextBid =
+          result.minNextBid ?? currentPrice + product.bidUnit;
 
-      setBidMessage(
-        `현재 최소 입찰가는 ${minNextBid.toLocaleString()}원입니다. 더 높은 금액으로 입찰해 주세요.`
-      );
+        setBidMessage(
+          `현재 최소 입찰가는 ${minNextBid.toLocaleString()}원입니다. 더 높은 금액으로 입찰해 주세요.`
+        );
+      }
     }
   } catch (error) {
     console.error("입찰 요청 실패:", error);
