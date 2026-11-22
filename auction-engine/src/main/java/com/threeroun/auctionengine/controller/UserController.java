@@ -25,6 +25,10 @@ import static com.threeroun.auctionengine.security.JwtAuthenticationFilter.AUTH_
 @RequestMapping("/api/users")
 public class UserController {
 
+    // 결제 연동이 없는 MVP라 가입 때 모든 사용자에게 같은 크레딧을 준다. 클라이언트가 값을
+    // 정하게 두면 API를 직접 호출해 임의의 크레딧으로 가입할 수 있어서 서버에서 고정한다.
+    static final int SIGNUP_CREDIT = 500_000;
+
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final CreditService creditService;
@@ -62,8 +66,7 @@ public class UserController {
         }
 
         String passwordHash = passwordEncoder.encode(request.password());
-        int initialCredit = request.initialCredit() != null ? request.initialCredit() : 0;
-        User user = new User(request.username(), request.email(), passwordHash, initialCredit);
+        User user = new User(request.username(), request.email(), passwordHash, SIGNUP_CREDIT);
         User saved = userRepository.save(user);
         // 방금 가입해서 묶인 크레딧이 없으므로 사용 가능 크레딧 = 보유 크레딧
         return UserResponse.from(saved, saved.getCredit());

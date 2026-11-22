@@ -115,6 +115,33 @@ class BidServiceAntiSnipingTest {
                 .isEqualTo(originalEndAt.truncatedTo(ChronoUnit.SECONDS));
     }
 
+    // 8차 회의 결정: 연장은 1회만. 첫 임박 입찰은 연장되고, 연장된 마감이 다시 임박해도 두 번째는 연장되지 않는다.
+    @Test
+    void 연장은_한_번만_되고_두_번째_임박_입찰은_연장되지_않는다() {
+        User seller = user("seller");
+        User first = user("first");
+        User second = user("second");
+        Product product = product(seller, LocalDateTime.now().plusSeconds(10));
+
+        BidResult firstResult = bidService.placeBid(product.getId(), first.getId(), STARTING_PRICE + BID_UNIT);
+        assertThat(firstResult.extended()).isTrue();
+
+        // 연장된 마감이 다시 임박한 상황을 만든다 (다른 사용자라 쿨다운과는 무관)
+        Product extended = productRepository.findById(product.getId()).orElseThrow();
+        LocalDateTime secondWindowEndAt = LocalDateTime.now().plusSeconds(10);
+        extended.setEndAt(secondWindowEndAt);
+        productRepository.save(extended);
+
+        BidResult secondResult = bidService.placeBid(product.getId(), second.getId(), STARTING_PRICE + 2 * BID_UNIT);
+
+        assertThat(secondResult.bid().isValid()).isTrue();
+        assertThat(secondResult.extended()).isFalse();
+        Product reloaded = productRepository.findById(product.getId()).orElseThrow();
+        assertThat(reloaded.getExtensionCount()).isEqualTo(1);
+        assertThat(reloaded.getEndAt().truncatedTo(ChronoUnit.SECONDS))
+                .isEqualTo(secondWindowEndAt.truncatedTo(ChronoUnit.SECONDS));
+    }
+
     @Test
     void 연장_횟수가_상한에_도달하면_마감_임박이어도_더_연장되지_않는다() {
         User seller = user("seller");

@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { jwtDecode } from "jwt-decode";
+import { getUserProfile, type UserProfile } from "../api/auth";
 import type { Product } from "../data/products";
 import {
   placeBid,
@@ -17,6 +19,7 @@ const CLOSED_STATUSES = ["SOLD", "UNSOLD", "COMPLETED"];
 function ProductDetail() {
   const { id } = useParams();
   const [product, setProduct] = useState<Product | null>(null);
+  const [user, setUser] = useState<UserProfile | null>(null);
   const [bidHistory, setBidHistory] = useState<BidHistoryResponse[]>([]);
   const [currentPrice, setCurrentPrice] = useState(0);
   const [endAt, setEndAt] = useState("");
@@ -28,6 +31,25 @@ function ProductDetail() {
   const [isBidding, setIsBidding] = useState(false);
   const [bidMessage, setBidMessage] = useState("");
   const [socketStatus, setSocketStatus] = useState<SocketStatus>("connecting");
+  useEffect(() => {
+    const accessToken = localStorage.getItem("accessToken");
+
+    if (!accessToken) {
+      return;
+    }
+
+    try {
+      const decoded = jwtDecode<{ sub: string }>(accessToken);
+
+      getUserProfile(decoded.sub)
+        .then(setUser)
+        .catch((error) => {
+          console.error("사용자 정보 조회 실패:", error);
+        });
+    } catch (error) {
+      console.error("로그인 토큰 확인 실패:", error);
+    }
+  }, []);
   useEffect(() => {
     fetch("/api/products?status=all")
     .then((response) => response.json())
@@ -151,6 +173,18 @@ function ProductDetail() {
 
   const isEndTimePassed = endAt !== "" && new Date(endAt).getTime() <= now;
   const isBiddingClosed = isAuctionClosed || isEndTimePassed;
+
+  const remainingSeconds = endAt
+    ? Math.max(0, Math.ceil((new Date(endAt).getTime() - now) / 1000))
+    : 0;
+
+  const hours = Math.floor(remainingSeconds / 3600);
+  const minutes = Math.floor((remainingSeconds % 3600) / 60);
+  const seconds = remainingSeconds % 60;
+
+  const countdown = [hours, minutes, seconds]
+    .map((value) => String(value).padStart(2, "0"))
+    .join(":");
 
   const highestBid = bidHistory
     .filter((bid) => bid.isValid)
@@ -284,16 +318,28 @@ function ProductDetail() {
 
             <p>
               최고 입찰자:{" "}
-              {highestBid
-                ? (highestBid.bidderUsername ?? highestBid.bidderId)
-                : "아직 입찰자가 없습니다."}
+              <strong>
+                {highestBid
+                  ? (highestBid.bidderUsername ?? highestBid.bidderId)
+                  : "아직 입찰자가 없습니다."}
+              </strong>
             </p>
 
             <p>
               최소 입찰 단위: {product.bidUnit.toLocaleString()}원
             </p>
-
-            <p>마감 시각: {endAt}</p>
+            <p>
+              남은 시간:{" "}
+              <strong>
+                {isBiddingClosed ? "경매 종료" : countdown}
+              </strong>
+            </p>
+            <p>
+              마감 시각:{" "}
+              <strong>
+                {endAt ? new Date(endAt).toLocaleString("ko-KR") : "정보 없음"}
+              </strong>
+            </p>
             {isAuctionClosed && (
               <div className="auction-result">
                 <h3>경매 종료</h3>
@@ -318,6 +364,14 @@ function ProductDetail() {
               <p>경매가 마감되었습니다. 낙찰 결과를 집계하는 중입니다.</p>
             )}
           </div>
+          {user && (
+            <p>
+              <strong>사용 가능 크레딧: </strong>
+              {user.availableCredit !== undefined
+                ? `${user.availableCredit.toLocaleString()}원`
+                : "정보를 불러올 수 없습니다."}
+            </p>
+          )}
           <input
             type="number"
             value={bidAmount}

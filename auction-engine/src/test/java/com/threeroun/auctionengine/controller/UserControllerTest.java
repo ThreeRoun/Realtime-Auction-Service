@@ -107,10 +107,10 @@ class UserControllerTest {
     }
 
     @Test
-    void 회원가입에_성공하면_초기_크레딧이_반영되고_비밀번호_해시는_안_나온다() throws Exception {
+    void 회원가입에_성공하면_고정_크레딧이_들어가고_비밀번호_해시는_안_나온다() throws Exception {
         String suffix = UUID.randomUUID().toString().substring(0, 8);
         String body = """
-                { "username": "new-%s", "email": "new-%s@test.com", "password": "secret1234", "initialCredit": 50000 }
+                { "username": "new-%s", "email": "new-%s@test.com", "password": "secret1234" }
                 """.formatted(suffix, suffix);
 
         String response = mockMvc.perform(post("/api/users")
@@ -121,7 +121,7 @@ class UserControllerTest {
 
         Map<String, Object> responseBody = objectMapper.readValue(response, Map.class);
         assertThat(responseBody.get("username")).isEqualTo("new-" + suffix);
-        assertThat(responseBody.get("credit")).isEqualTo(50000);
+        assertThat(responseBody.get("credit")).isEqualTo(500_000);
         assertThat(responseBody).doesNotContainKey("passwordHash");
 
         User saved = userRepository.findById(UUID.fromString((String) responseBody.get("id"))).orElseThrow();
@@ -129,10 +129,10 @@ class UserControllerTest {
     }
 
     @Test
-    void initialCredit을_생략하면_크레딧_0으로_가입된다() throws Exception {
+    void 요청에_initialCredit을_보내도_무시하고_고정_크레딧으로_가입된다() throws Exception {
         String suffix = UUID.randomUUID().toString().substring(0, 8);
         String body = """
-                { "username": "nocr-%s", "email": "nocr-%s@test.com", "password": "secret1234" }
+                { "username": "nocr-%s", "email": "nocr-%s@test.com", "password": "secret1234", "initialCredit": 99999999 }
                 """.formatted(suffix, suffix);
 
         String response = mockMvc.perform(post("/api/users")
@@ -142,7 +142,7 @@ class UserControllerTest {
                 .andReturn().getResponse().getContentAsString();
 
         Map<String, Object> responseBody = objectMapper.readValue(response, Map.class);
-        assertThat(responseBody.get("credit")).isEqualTo(0);
+        assertThat(responseBody.get("credit")).isEqualTo(500_000);
     }
 
     @Test

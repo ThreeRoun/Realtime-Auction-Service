@@ -26,8 +26,8 @@ public class BidService {
     static final Duration ANTI_SNIPING_WINDOW = Duration.ofSeconds(30);
     static final Duration EXTENSION_DURATION = Duration.ofMinutes(1);
     // 연장이 무한정 반복되는 걸 막는 상한. 이 횟수를 넘으면 마감 임박 시 유효한 입찰이 들어와도
-    // 가격만 갱신되고 더 이상 연장되지 않는다.
-    static final int MAX_EXTENSIONS = 5;
+    // 가격만 갱신되고 더 이상 연장되지 않는다. (8차 회의에서 시연 시간을 예측할 수 있게 1회로 줄임)
+    static final int MAX_EXTENSIONS = 1;
     // 같은 유저가 같은 상품에 너무 짧은 간격으로 연타 입찰(매크로 등)하는 걸 막는 쿨다운.
     static final Duration BID_COOLDOWN = Duration.ofSeconds(10);
 
