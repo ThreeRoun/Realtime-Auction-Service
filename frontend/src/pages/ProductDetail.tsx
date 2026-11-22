@@ -174,6 +174,18 @@ function ProductDetail() {
   const isEndTimePassed = endAt !== "" && new Date(endAt).getTime() <= now;
   const isBiddingClosed = isAuctionClosed || isEndTimePassed;
 
+  const remainingSeconds = endAt
+    ? Math.max(0, Math.ceil((new Date(endAt).getTime() - now) / 1000))
+    : 0;
+
+  const hours = Math.floor(remainingSeconds / 3600);
+  const minutes = Math.floor((remainingSeconds % 3600) / 60);
+  const seconds = remainingSeconds % 60;
+
+  const countdown = [hours, minutes, seconds]
+    .map((value) => String(value).padStart(2, "0"))
+    .join(":");
+
   const highestBid = bidHistory
     .filter((bid) => bid.isValid)
     .reduce<BidHistoryResponse | null>(
@@ -300,16 +312,28 @@ function ProductDetail() {
 
             <p>
               최고 입찰자:{" "}
-              {highestBid
-                ? (highestBid.bidderUsername ?? highestBid.bidderId)
-                : "아직 입찰자가 없습니다."}
+              <strong>
+                {highestBid
+                  ? (highestBid.bidderUsername ?? highestBid.bidderId)
+                  : "아직 입찰자가 없습니다."}
+              </strong>
             </p>
 
             <p>
               최소 입찰 단위: {product.bidUnit.toLocaleString()}원
             </p>
-
-            <p>마감 시각: {endAt}</p>
+            <p>
+              남은 시간:{" "}
+              <strong>
+                {isBiddingClosed ? "경매 종료" : countdown}
+              </strong>
+            </p>
+            <p>
+              마감 시각:{" "}
+              <strong>
+                {endAt ? new Date(endAt).toLocaleString("ko-KR") : "정보 없음"}
+              </strong>
+            </p>
             {isAuctionClosed && (
               <div className="auction-result">
                 <h3>경매 종료</h3>
