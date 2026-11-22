@@ -8,10 +8,12 @@ import MyPage from "./pages/MyPage";
 import AuctionResult from "./pages/AuctionResult";
 import "./App.css";
 import Signup from "./pages/Signup";
+import AuctionNotification from "./components/AuctionNotification";
 
 function App() {
   return (
     <BrowserRouter>
+      <AuctionNotification />
       <Navbar />
 
       <Routes>
