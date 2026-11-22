@@ -56,6 +56,7 @@ class UserControllerTest {
         assertThat(body.get("username")).isEqualTo(user.getUsername());
         assertThat(body.get("email")).isEqualTo(user.getEmail());
         assertThat(body.get("credit")).isEqualTo(30_000);
+        assertThat(body.get("availableCredit")).isEqualTo(30_000); // 진행중 경매에 묶인 게 없으면 보유와 같다
         assertThat(body).containsKey("createdAt");
         assertThat(body).doesNotContainKey("passwordHash");
         assertThat(body).doesNotContainKey("password_hash");

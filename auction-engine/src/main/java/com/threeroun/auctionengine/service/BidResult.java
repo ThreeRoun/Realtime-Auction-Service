@@ -12,4 +12,6 @@ import com.threeroun.auctionengine.domain.Bid;
 public record BidResult(Bid bid, boolean extended, String reason, int minNextBid) {
 
     public static final String AMOUNT_TOO_LOW = "AMOUNT_TOO_LOW";
+    // 사용 가능 크레딧(보유 - 다른 진행중 경매에 묶인 금액)보다 높은 금액으로 입찰한 경우
+    public static final String INSUFFICIENT_CREDIT = "INSUFFICIENT_CREDIT";
 }

@@ -3,6 +3,7 @@ package com.threeroun.auctionengine.service;
 import com.threeroun.auctionengine.domain.Bid;
 import com.threeroun.auctionengine.domain.Product;
 import com.threeroun.auctionengine.domain.ProductStatus;
+import com.threeroun.auctionengine.domain.User;
 import com.threeroun.auctionengine.event.AuctionExtendedEvent;
 import com.threeroun.auctionengine.event.BidPlacedEvent;
 import com.threeroun.auctionengine.repository.BidRepository;
@@ -35,10 +36,12 @@ public class BidService {
     private final UserRepository userRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final AuctionMetrics metrics;
+    private final CreditService creditService;
 
     public BidService(ProductRepository productRepository, BidRepository bidRepository,
                        UserRepository userRepository, ApplicationEventPublisher eventPublisher,
-                       AuctionMetrics metrics) {
+                       AuctionMetrics metrics, CreditService creditService) {
+        this.creditService = creditService;
         this.productRepository = productRepository;
         this.bidRepository = bidRepository;
         this.userRepository = userRepository;
@@ -93,7 +96,18 @@ public class BidService {
         int minNextBid = product.getCurrentPrice() + product.getBidUnit();
         boolean extended = false;
         String reason = null;
-        if (amount >= minNextBid) {
+        if (amount < minNextBid) {
+            // amount가 minNextBid 미만이면 bid는 is_valid=false인 채로 그대로 저장된다.
+            // 여기서 예외를 던지면 @Transactional이 트랜잭션 전체를 롤백시켜서, 남겨야 할
+            // "진 입찰" 기록 자체가 사라져 버리기 때문에 예외 대신 반환값(isValid)으로 성패를 알린다.
+            metrics.bidRejected(AuctionMetrics.BidRejectionReason.AMOUNT_TOO_LOW);
+            // 사유를 응답에 실어 보낸다 - 프론트가 "왜 안 됐는지"를 사용자에게 알려줄 수 있게 (이슈 #148)
+            reason = BidResult.AMOUNT_TOO_LOW;
+        } else if (!hasEnoughCredit(bidderId, productId, amount)) {
+            // 보유 크레딧을 넘는 입찰(이슈 #163). 금액이 낮은 경우와 마찬가지로 예외 대신 진 입찰로 기록한다.
+            metrics.bidRejected(AuctionMetrics.BidRejectionReason.INSUFFICIENT_CREDIT);
+            reason = BidResult.INSUFFICIENT_CREDIT;
+        } else {
             bid.markValid();
             product.setCurrentPrice(amount);
 
@@ -107,13 +121,6 @@ public class BidService {
                 product.incrementExtensionCount();
                 extended = true;
             }
-        } else {
-            // amount가 minNextBid 미만이면 bid는 is_valid=false인 채로 그대로 저장된다.
-            // 여기서 예외를 던지면 @Transactional이 트랜잭션 전체를 롤백시켜서, 남겨야 할
-            // "진 입찰" 기록 자체가 사라져 버리기 때문에 예외 대신 반환값(isValid)으로 성패를 알린다.
-            metrics.bidRejected(AuctionMetrics.BidRejectionReason.AMOUNT_TOO_LOW);
-            // 사유를 응답에 실어 보낸다 - 프론트가 "왜 안 됐는지"를 사용자에게 알려줄 수 있게 (이슈 #148)
-            reason = BidResult.AMOUNT_TOO_LOW;
         }
         Bid savedBid = bidRepository.save(bid);
 
@@ -131,5 +138,21 @@ public class BidService {
         // 진 입찰이면 가격이 그대로라 처음 계산한 minNextBid와 같다.
         int nextMinBid = product.getCurrentPrice() + product.getBidUnit();
         return new BidResult(savedBid, extended, reason, nextMinBid);
+    }
+
+    // 크레딧 확인 (이슈 #163). 입찰을 받아 주면 그 금액만큼 내 크레딧이 이 경매에 묶이므로,
+    // "금액 <= 보유 크레딧 - 다른 진행중 경매에 묶인 금액"이어야 한다.
+    //
+    // 동시성: 같은 사용자가 서로 다른 두 경매에 동시에 입찰하면 상품 락만으로는 두 요청이 서로를
+    // 못 본다(각자 다른 상품 row를 잠그므로). 둘 다 "다른 경매에 묶인 금액 = 0"으로 읽고 둘 다
+    // 통과하면 보유 크레딧을 넘게 된다. 그래서 입찰자 User row를 잠가 같은 사용자의 입찰 판정을
+    // 한 줄로 세운다. 두 번째 요청은 첫 요청이 커밋한 뒤에 묶인 금액을 계산한다.
+    //
+    // 락 순서는 항상 "상품 -> 사용자"다(낙찰 처리도 상품 -> 사용자 순서). 순서가 일관되어야
+    // 서로 반대 순서로 잠그는 데드락이 생기지 않는다.
+    private boolean hasEnoughCredit(UUID bidderId, UUID productId, int amount) {
+        User bidder = userRepository.findByIdForUpdate(bidderId)
+                .orElseThrow(() -> new IllegalStateException("입찰자를 찾을 수 없습니다: " + bidderId));
+        return amount <= creditService.availableCreditExcluding(bidder, productId);
     }
 }

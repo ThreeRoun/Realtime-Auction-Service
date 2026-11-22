@@ -61,9 +61,12 @@
   "username": "경매왕",
   "email": "user@example.com",
   "credit": 500000,
+  "availableCredit": 440000,
   "createdAt": "2026-09-20T09:00:00"
 }
 ```
+
+`credit`은 보유 크레딧, `availableCredit`은 거기서 **진행중 경매에 묶인 금액**(내가 최고 입찰자인 경매의 현재가 합)을 뺀 값이다. 묶인 금액은 두 값의 차이로 알 수 있다.
 
 ### 응답 - 타인 조회 (200 OK)
 

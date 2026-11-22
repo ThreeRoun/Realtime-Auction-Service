@@ -44,6 +44,26 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
     @Query("select p from Product p join fetch p.seller left join fetch p.winner order by p.endAt asc")
     List<Product> findAllByOrderByEndAtAsc();
 
+    // 크레딧 묶기: "이 사용자가 지금 최고 입찰자인 진행중 경매"의 현재가 합.
+    // 최고 입찰자 = 현재가와 금액이 같은 유효한 입찰의 주인이다 (유효한 입찰은 매번 현재가를 최소
+    // bid_unit 이상 올리므로, 한 상품에서 유효한 입찰 금액은 서로 겹치지 않는다).
+    // 컬럼에 저장하지 않고 입찰할 때마다 계산하기 때문에, 추월/마감으로 풀리는 걸 따로 관리할 필요가
+    // 없고 값이 어긋날 일도 없다.
+    @Query("select coalesce(sum(p.currentPrice), 0) from Product p "
+            + "where p.status in :statuses "
+            + "and exists (select 1 from Bid b where b.product = p and b.bidder.id = :userId "
+            + "and b.valid = true and b.amount = p.currentPrice)")
+    long sumLockedCredit(@Param("userId") UUID userId, @Param("statuses") Collection<ProductStatus> statuses);
+
+    // 위와 같지만 특정 상품은 뺀다. 그 상품에 입찰하는 중이면, 거기 묶인 내 돈은 새 입찰가로
+    // 대체되므로 "다른 경매에 묶인 금액"만 필요하기 때문이다.
+    @Query("select coalesce(sum(p.currentPrice), 0) from Product p "
+            + "where p.status in :statuses and p.id <> :excludedProductId "
+            + "and exists (select 1 from Bid b where b.product = p and b.bidder.id = :userId "
+            + "and b.valid = true and b.amount = p.currentPrice)")
+    long sumLockedCreditExcluding(@Param("userId") UUID userId, @Param("excludedProductId") UUID excludedProductId,
+                                  @Param("statuses") Collection<ProductStatus> statuses);
+
     // 스케줄러: 마감 시각이 지났는데 아직 안 닫힌(진행중/마감연장) 상품 후보 조회
     List<Product> findByStatusInAndEndAtLessThanEqual(Collection<ProductStatus> statuses, LocalDateTime now);
 
