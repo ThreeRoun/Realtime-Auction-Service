@@ -60,3 +60,8 @@ Alloy가 각 로그에 붙이는 라벨입니다.
 | `service` | compose 서비스 이름 (`auction-engine`, `realtime-relay`, `frontend`, `db`, `redis` 등) |
 | `container` | 컨테이너 이름 |
 | `project` | compose 프로젝트 이름 |
+
+## AI 로그 분석
+
+여러 서비스의 로그를 시간순으로 엮어 Claude API로 장애 원인을 분석하는 스크립트는
+[ai-log-analyzer/README.md](ai-log-analyzer/README.md)를 참고하세요.

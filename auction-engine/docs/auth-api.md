@@ -23,6 +23,8 @@
 }
 ```
 
+`expiresAt`은 마감 시각 등 다른 시각 필드와 같은 서버 시간대(한국 시각, `product-api.md` 참고) 기준이고 시간대 표시는 없다. 프론트(`Navbar`)가 이 값을 브라우저 로컬(한국) 시각으로 해석해서 로그인 만료를 판단한다.
+
 토큰의 subject(`sub`)에 user id(UUID)가 들어있다. 서명 검증 키는 `jwt.secret` 설정값
 (환경변수 `JWT_SECRET`으로 덮어쓸 수 있음), 만료 시간은 `jwt.expiration-minutes`
 (기본 60분, 환경변수 `JWT_EXPIRATION_MINUTES`)로 조정 가능하다.

@@ -39,6 +39,8 @@ public class AuthController {
         }
 
         String token = jwtService.issueToken(user.getId());
+        // expiresAt도 마감 시각 등 다른 시각 필드와 같은 서버 시간대(한국 시각, AuctionEngineApplication 참고) 기준이다.
+        // 프론트(Navbar)는 이 값을 시간대 표시 없이 브라우저 로컬(한국) 시각으로 해석해서 로그인 만료를 판단한다.
         LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(jwtService.getExpirationMinutes());
         return new LoginResponse(token, expiresAt);
     }
