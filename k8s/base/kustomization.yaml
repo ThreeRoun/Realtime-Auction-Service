@@ -12,6 +12,7 @@ resources:
   - configmap.yaml
   - postgres.yaml
   - redis.yaml
+  - object-storage.yaml
   - auction-engine.yaml
   - realtime-relay.yaml
   - frontend.yaml

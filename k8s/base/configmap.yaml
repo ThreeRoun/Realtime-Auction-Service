@@ -6,7 +6,11 @@ metadata:
 data:
   SPRING_DATASOURCE_URL: jdbc:postgresql://auction-db:5432/auction
   SPRING_DATA_REDIS_HOST: auction-redis
-  PRODUCT_IMAGE_DIR: /data/product-images
+  # 상품 이미지는 공유 오브젝트 스토리지(auction-s3, object-storage.yaml)에 저장한다 (이슈 #101).
+  # 접속 키(S3_ACCESS_KEY/S3_SECRET_KEY)는 auction-secret에 있다.
+  IMAGE_STORAGE_TYPE: s3
+  S3_ENDPOINT: http://auction-s3:8333
+  S3_BUCKET: product-images
   # 컨테이너 메모리 limit 기준으로 힙 크기를 잡는다 (JVM 기본값 25%는 너무 작음)
   JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75
   # application-prod.properties를 활성화한다 - jwt.secret/DB 계정에 기본값이 없어서,
