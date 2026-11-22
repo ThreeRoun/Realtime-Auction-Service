@@ -138,6 +138,22 @@ read -rs ANTHROPIC_KEY && kubectl -n monitoring create secret generic triage-bot
 롤링 업데이트가 `maxUnavailable: 0`이라 새 Pod가 준비되지 않으면 기존 Pod가 계속 요청을 받는다.
 실행 결과와 배포된 이미지는 Actions 실행 화면의 Summary에서 확인할 수 있다.
 
+#### 서버 clone 자동 갱신
+
+runner는 자기 작업 폴더(`_work/...`)에 커밋을 받아 배포할 뿐, 사람이 서버에 clone해 둔 저장소는 건드리지 않는다.
+저장소 변수 `SERVER_REPO_DIR`에 그 clone의 절대 경로를 넣어 두면, 배포 job 마지막에 그 clone의 `baseline`을 `git pull --ff-only`로 최신화한다.
+
+```bash
+gh variable set SERVER_REPO_DIR --body '/home/<계정>/Realtime-Auction-Service'
+```
+
+- runner 계정이 그 폴더를 읽고 쓸 수 있어야 한다 (다른 계정 소유면 git이 거부한다). 가장 간단한 방법은 runner 계정으로 clone해 두는 것이다.
+- 다음 경우에는 **건드리지 않고 경고만 남긴다** (배포 결과에는 영향 없음):
+  - `baseline`이 아닌 브랜치나 커밋을 체크아웃해 둔 경우 (예: 머지 전 PR 브랜치로 작업 중)
+  - 커밋 안 된 변경이 있는 경우 (untracked 파일은 상관없음)
+  - 로컬 커밋이 있어 fast-forward가 안 되는 경우
+- 변수가 없으면 이 단계는 건너뛴다.
+
 앱 배포가 끝나면 별도 job(`deploy-monitoring`)이 모니터링 스택(`k8s/monitoring`)을 적용한다.
 
 - 앱 배포와 분리돼 있어 모니터링 쪽이 실패해도 **앱은 롤백되지 않는다**.
