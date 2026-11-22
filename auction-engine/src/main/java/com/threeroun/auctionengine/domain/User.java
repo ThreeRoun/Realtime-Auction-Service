@@ -80,4 +80,12 @@ public class User {
         }
         credit -= amount;
     }
+
+    // 낙찰 대금을 판매자에게 지급할 때 쓴다 (AuctionClosingService, 낙찰자 차감과 같은 트랜잭션)
+    public void addCredit(int amount) {
+        if (amount < 0) {
+            throw new IllegalArgumentException("지급 금액은 0 이상이어야 합니다: " + amount);
+        }
+        credit += amount;
+    }
 }

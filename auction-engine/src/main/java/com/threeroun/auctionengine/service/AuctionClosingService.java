@@ -65,12 +65,28 @@ public class AuctionClosingService {
         // 입찰자 User row도 findByIdForUpdate로 잠근다. 같은 유저가 동시에 두 경매에서 낙찰되는
         // 경우(서로 다른 상품이라 Product 락만으로는 못 막는다) 크레딧 차감이 두 트랜잭션에서
         // 동시에 같은 credit 값을 읽어 lost update가 나는 것을 막기 위함이다.
+        //
+        // 낙찰되면 같은 트랜잭션에서 판매자에게 낙찰가를 지급한다(수수료 없음). 차감과 지급이 한
+        // 트랜잭션이라 "돈만 사라지거나 돈만 생기는" 일이 없다. 판매자 row도 잠가야 하는데, 낙찰자와
+        // 판매자를 아무 순서로나 잠그면 두 마감 처리가 서로의 판매자/낙찰자를 반대 순서로 잠가
+        // 데드락이 날 수 있다(A의 낙찰자=B의 판매자, A의 판매자=B의 낙찰자). 그래서 항상 id가 작은
+        // 쪽부터 잠근다.
+        UUID sellerId = product.getSeller().getId();
         List<Bid> candidates = bidRepository.findByProductIdAndValidTrueOrderByAmountDesc(productId);
         for (Bid bid : candidates) {
-            User bidder = userRepository.findByIdForUpdate(bid.getBidder().getId())
-                    .orElseThrow(() -> new IllegalStateException("입찰자를 찾을 수 없습니다: " + bid.getBidder().getId()));
+            UUID bidderId = bid.getBidder().getId();
+            User bidder;
+            User seller;
+            if (bidderId.compareTo(sellerId) < 0) {
+                bidder = lockUser(bidderId);
+                seller = lockUser(sellerId);
+            } else {
+                seller = lockUser(sellerId);
+                bidder = lockUser(bidderId);
+            }
             if (bidder.getCredit() >= bid.getAmount()) {
                 bidder.deductCredit(bid.getAmount());
+                seller.addCredit(bid.getAmount());
                 winnerId = bidder.getId();
                 finalPrice = bid.getAmount();
                 product.setWinner(bidder);
@@ -81,6 +97,11 @@ public class AuctionClosingService {
         product.setStatus(winnerId != null ? ProductStatus.SOLD : ProductStatus.UNSOLD);
         eventPublisher.publishEvent(new AuctionClosedEvent(productId, winnerId, finalPrice));
         metrics.auctionClosed(winnerId != null);
+    }
+
+    private User lockUser(UUID userId) {
+        return userRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new IllegalStateException("사용자를 찾을 수 없습니다: " + userId));
     }
 
     // PENDING -> IN_PROGRESS 전이. 엔티티를 읽어서 바꾸는 대신 조건부 UPDATE 쿼리 하나로 처리한다
