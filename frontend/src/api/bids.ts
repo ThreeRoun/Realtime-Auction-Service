@@ -34,6 +34,7 @@ const BID_ERROR_MESSAGES: Record<string, string> = {
   BID_COOLDOWN_ACTIVE: "방금 입찰하셨습니다. 잠시 후 다시 입찰해 주세요.",
   AUCTION_NOT_IN_PROGRESS: "진행 중인 경매가 아닙니다.",
   PRODUCT_NOT_FOUND: "존재하지 않는 상품입니다.",
+  INSUFFICIENT_CREDIT: "사용 가능한 크레딧이 부족하여 입찰할 수 없습니다.",
 };
 
 export async function placeBid(

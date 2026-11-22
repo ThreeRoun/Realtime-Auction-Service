@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { jwtDecode } from "jwt-decode";
+import { getUserProfile, type UserProfile } from "../api/auth";
 import type { Product } from "../data/products";
 import {
   placeBid,
@@ -17,6 +19,7 @@ const CLOSED_STATUSES = ["SOLD", "UNSOLD", "COMPLETED"];
 function ProductDetail() {
   const { id } = useParams();
   const [product, setProduct] = useState<Product | null>(null);
+  const [user, setUser] = useState<UserProfile | null>(null);
   const [bidHistory, setBidHistory] = useState<BidHistoryResponse[]>([]);
   const [currentPrice, setCurrentPrice] = useState(0);
   const [endAt, setEndAt] = useState("");
@@ -28,6 +31,25 @@ function ProductDetail() {
   const [isBidding, setIsBidding] = useState(false);
   const [bidMessage, setBidMessage] = useState("");
   const [socketStatus, setSocketStatus] = useState<SocketStatus>("connecting");
+  useEffect(() => {
+    const accessToken = localStorage.getItem("accessToken");
+
+    if (!accessToken) {
+      return;
+    }
+
+    try {
+      const decoded = jwtDecode<{ sub: string }>(accessToken);
+
+      getUserProfile(decoded.sub)
+        .then(setUser)
+        .catch((error) => {
+          console.error("사용자 정보 조회 실패:", error);
+        });
+    } catch (error) {
+      console.error("로그인 토큰 확인 실패:", error);
+    }
+  }, []);
   useEffect(() => {
     fetch("/api/products?status=all")
     .then((response) => response.json())
@@ -312,6 +334,14 @@ function ProductDetail() {
               <p>경매가 마감되었습니다. 낙찰 결과를 집계하는 중입니다.</p>
             )}
           </div>
+          {user && (
+            <p>
+              <strong>사용 가능 크레딧: </strong>
+              {user.availableCredit !== undefined
+                ? `${user.availableCredit.toLocaleString()}원`
+                : "정보를 불러올 수 없습니다."}
+            </p>
+          )}
           <input
             type="number"
             value={bidAmount}
