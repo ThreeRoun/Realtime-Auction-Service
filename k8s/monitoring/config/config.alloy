@@ -1,4 +1,5 @@
-// 클러스터용 Grafana Alloy 설정: Pod 로그를 Kubernetes API로 읽어 Loki로 보낸다.
+// 클러스터용 Grafana Alloy 설정: Pod 로그를 Kubernetes API로 읽어 Loki로 보내고,
+// 앱(엔진, relay)이 OpenTelemetry(OTLP)로 보낸 트레이스를 받아 Tempo로 보낸다.
 // (로컬 compose용은 logging/alloy/config.alloy - Docker 소켓 기반)
 //
 // 노드 디스크(hostPath)를 마운트하지 않고 API(pods/log)로 읽기 때문에 Alloy는 1개만 띄운다.
@@ -69,5 +70,41 @@ loki.source.kubernetes "pods" {
 loki.write "default" {
   endpoint {
     url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+
+// 5) 트레이스: 앱(엔진, relay)이 OpenTelemetry(OTLP)로 보낸 트레이스를 받아 Tempo로 전달한다.
+//    gRPC(4317), HTTP(4318) 둘 다 연다. 보내는 쪽 SDK마다 기본 프로토콜이 달라서
+//    (OTel Java 에이전트 2.x 기본값은 HTTP) 어느 쪽으로 보내도 받을 수 있게 한다.
+//    앱은 alloy.monitoring.svc.cluster.local로 보낸다 (alloy.yaml의 Service).
+otelcol.receiver.otlp "apps" {
+  grpc {
+    endpoint = "0.0.0.0:4317"
+  }
+
+  http {
+    endpoint = "0.0.0.0:4318"
+  }
+
+  output {
+    traces = [otelcol.processor.batch.traces.input]
+  }
+}
+
+// 6) 트레이스를 모아서(batch) 한 번에 보낸다 (요청 수를 줄이기 위해)
+otelcol.processor.batch "traces" {
+  output {
+    traces = [otelcol.exporter.otlp.tempo.input]
+  }
+}
+
+// 7) Tempo로 전송 (같은 monitoring 네임스페이스 내부 통신이라 TLS 없이)
+otelcol.exporter.otlp "tempo" {
+  client {
+    endpoint = "tempo:4317"
+
+    tls {
+      insecure = true
+    }
   }
 }

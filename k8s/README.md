@@ -27,7 +27,8 @@ k8s/
     ├── node-exporter.yaml   # 서버 CPU/메모리/디스크 지표 (DaemonSet)
     ├── kube-state-metrics.yaml # Pod 재시작/Pending 등 k8s 상태 지표
     ├── loki.yaml            # 로그 저장 (PVC 5Gi, 7일 보존)
-    ├── alloy.yaml           # Pod 로그 수집 → Loki
+    ├── tempo.yaml           # 트레이스 저장 (PVC 5Gi, 7일 보존)
+    ├── alloy.yaml           # Pod 로그 수집 → Loki, 앱 트레이스(OTLP) 수신 → Tempo
     ├── grafana.yaml         # 조회 UI (PVC 1Gi) + Ingress /grafana
     ├── triage-bot.yaml      # 장애 트리아지 봇 (critical 알람 → Discord, monitoring/triage-bot)
     ├── config/              # 각 도구 설정 파일 (configMapGenerator로 ConfigMap 생성)
@@ -183,7 +184,8 @@ auction-engine     ─┐
 node-exporter      ─┤
 kube-state-metrics ─┼─(지표)─▶ Prometheus ─(알람 규칙)─▶ Alertmanager ─▶ Discord
 kubelet(cAdvisor)  ─┘              │
-모든 Pod ─(로그, Kubernetes API)─▶ Alloy ─▶ Loki ─┴─▶ Grafana (/grafana)
+모든 Pod ─(로그, Kubernetes API)─▶ Alloy ─▶ Loki ─┤
+엔진, relay ─(트레이스, OTLP)───▶ Alloy ─▶ Tempo ─┴─▶ Grafana (/grafana)
 ```
 
 | 구성 요소 | 역할 | 비고 |
@@ -193,9 +195,10 @@ kubelet(cAdvisor)  ─┘              │
 | node-exporter | 서버 CPU/메모리/디스크 지표 | DaemonSet, hostNetwork 미사용(포트 외부 비노출) |
 | kube-state-metrics | Pod 재시작, Pending, replica 준비 상태 등 k8s 객체 상태 지표 | 읽기 전용 ClusterRole |
 | cAdvisor | 컨테이너별 실제 CPU/메모리/네트워크 사용량 | 별도 Pod 없이 kubelet 내장 엔드포인트 수집, 권한은 `nodes/metrics` 읽기만 |
-| Alloy | 모든 네임스페이스의 Pod 로그를 Kubernetes API(`pods/log`)로 읽어 Loki로 전송 | 노드 디스크 마운트 없음, replica 1 |
+| Alloy | 모든 네임스페이스의 Pod 로그를 Kubernetes API(`pods/log`)로 읽어 Loki로 전송, 앱 트레이스(OTLP)를 받아 Tempo로 전송 | 노드 디스크 마운트 없음, replica 1, Service `alloy`(4317 gRPC / 4318 HTTP) |
 | Loki | 로그 저장 | 7일 보존 |
-| Grafana | 지표·로그·알람 조회, 데이터 소스(Prometheus, Loki, Alertmanager)와 대시보드 자동 등록 | `http://<서버>/grafana` |
+| Tempo | 트레이스 저장 (2.10.x 단일 바이너리) | 7일 보존, PVC 5Gi |
+| Grafana | 지표·로그·트레이스·알람 조회, 데이터 소스(Prometheus, Loki, Tempo, Alertmanager)와 대시보드 자동 등록 | `http://<서버>/grafana` |
 | triage-bot | critical 알람을 받아 트리아지 결과를 Discord에 게시 ([monitoring/triage-bot](../monitoring/triage-bot/README.md)) | 기존 Discord 알람과 별도 경로, Claude 분석 결과(API 키는 `triage-bot-anthropic` Secret) + 상태 조회 + Runbook 링크 |
 
 수동 적용:
@@ -218,6 +221,18 @@ annotations:
 
 - 지표: `job`(= Pod의 `app` 라벨, 예: `auction-engine`), `namespace`, `pod`
 - 로그: `service`(= Pod의 `app` 라벨, 없으면 `app.kubernetes.io/name` / `k8s-app`), `namespace`, `pod`, `container`
+
+**트레이스 (이슈 #159)**: 엔진과 relay는 `k8s/base/configmap.yaml`의 OpenTelemetry 표준 환경변수
+(`OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy.monitoring.svc.cluster.local:4318`, `OTEL_SERVICE_NAME` 등)로 Alloy에 트레이스를 보낸다.
+계측(엔진의 OTel Java 에이전트, relay의 OTel Node SDK)이 들어가기 전에는 이 값들이 아무 영향을 주지 않는다.
+`OTEL_SERVICE_NAME`은 Pod의 `app` 라벨(= Loki `service` 라벨)과 같아야 Grafana에서 트레이스 → 로그 이동이 동작한다.
+Grafana에서는 Explore → Tempo로 트레이스를 찾고, span의 LOG 버튼으로 같은 `trace_id`의 로그를,
+Loki 로그 줄의 `trace_id` 링크로 트레이스를 연다. 수집 경로만 확인할 때는 Alloy로 테스트 트레이스를 보낸다:
+
+```bash
+kubectl -n monitoring port-forward svc/alloy 4318:4318 &
+python3 logging/tempo/send_test_trace.py   # 출력된 trace_id를 Grafana Explore → Tempo에서 검색
+```
 
 **설정 변경**: `k8s/monitoring/config/`의 파일을 고치면 ConfigMap 이름(해시)이 바뀌어 해당 Pod가 자동으로 재시작된다.
 알람 규칙(`config/rules/`)과 `config/alertmanager.yml`은 로컬 compose도 같은 파일을 마운트해서 쓴다.

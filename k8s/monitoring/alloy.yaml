@@ -1,4 +1,19 @@
-# Grafana Alloy: Pod 로그를 Kubernetes API로 읽어 Loki로 전송 (config/config.alloy)
+# Grafana Alloy: Pod 로그를 Kubernetes API로 읽어 Loki로 전송 + 앱 트레이스(OTLP)를 받아 Tempo로 전송 (config/config.alloy)
+# 앱(auction 네임스페이스)은 alloy.monitoring.svc.cluster.local:4318(HTTP) / :4317(gRPC)로 트레이스를 보낸다.
+apiVersion: v1
+kind: Service
+metadata:
+  name: alloy
+  namespace: monitoring
+spec:
+  selector:
+    app: alloy
+  ports:
+    - name: otlp-grpc
+      port: 4317
+    - name: otlp-http
+      port: 4318
+---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -58,6 +73,8 @@ spec:
             - /etc/alloy/config.alloy
           ports:
             - containerPort: 12345
+            - containerPort: 4317   # 트레이스 수신 (OTLP gRPC)
+            - containerPort: 4318   # 트레이스 수신 (OTLP HTTP)
           readinessProbe:
             httpGet:
               path: /-/ready

@@ -1,5 +1,5 @@
 # 모니터링·로깅·알람 스택 - namespace: monitoring
-#   Prometheus / Alertmanager / node-exporter / kube-state-metrics / Loki / Alloy / Grafana / triage-bot
+#   Prometheus / Alertmanager / node-exporter / kube-state-metrics / Loki / Tempo / Alloy / Grafana / triage-bot
 # 앱(k8s/overlays/prod)과 따로 적용한다:  kubectl apply -k k8s/monitoring
 #
 # Prometheus의 Pod 조회 권한(Role)은 auction 네임스페이스에 만들어야 해서,
@@ -19,6 +19,7 @@ resources:
   - node-exporter.yaml
   - kube-state-metrics.yaml
   - loki.yaml
+  - tempo.yaml
   - alloy.yaml
   - grafana.yaml
   - triage-bot.yaml
@@ -49,6 +50,10 @@ configMapGenerator:
     namespace: monitoring
     files:
       - config/loki.yaml
+  - name: tempo-config
+    namespace: monitoring
+    files:
+      - config/tempo.yaml
   - name: alloy-config
     namespace: monitoring
     files:

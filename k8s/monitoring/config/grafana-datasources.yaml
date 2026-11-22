@@ -14,6 +14,33 @@ datasources:
     type: loki
     access: proxy
     url: http://loki:3100
+    jsonData:
+      # 로그 줄의 trace_id 값을 링크로 만들어, 누르면 Tempo에서 그 트레이스를 연다 (log -> trace)
+      derivedFields:
+        - name: trace_id
+          matcherRegex: '"trace_id":"(\w+)"'
+          datasourceUid: tempo
+          url: "$${__value.raw}"   # provisioning 파일에서는 $를 $$로 써야 그대로 들어간다
+
+  # 트레이스 화면에서 span을 누르면 같은 trace_id를 가진 로그를 Loki에서 바로 찾는다 (trace -> log)
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    jsonData:
+      tracesToLogsV2:
+        datasourceUid: loki
+        # span 앞뒤 1분까지 로그를 찾는다 (로그와 span 시각이 조금 어긋날 수 있어서)
+        spanStartTimeShift: "-1m"
+        spanEndTimeShift: "1m"
+        # span의 service.name을 Loki의 service 라벨로 바꿔 해당 서비스 로그만 본다
+        # (앱의 OTEL_SERVICE_NAME을 Pod의 app 라벨과 같게 둔다 - k8s/base/configmap.yaml)
+        tags:
+          - key: service.name
+            value: service
+        # 로그 줄에 trace_id 문자열이 들어 있는 것만 고른다
+        filterByTraceID: true
 
   # 발생 중인 알람/silence 조회 (Alerting 메뉴)
   - name: Alertmanager
