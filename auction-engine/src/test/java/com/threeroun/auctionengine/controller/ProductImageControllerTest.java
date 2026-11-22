@@ -19,7 +19,11 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 // 실제 디스크에 쓰는 동작까지 검증하려고 테스트 전용 저장 경로(build 하위, git에 안 잡힘)로 돌린다.
@@ -110,6 +114,41 @@ class ProductImageControllerTest {
         mockMvc.perform(multipart("/api/products/{id}/image", UUID.randomUUID())
                         .file(image)
                         .header(HttpHeaders.AUTHORIZATION, bearerToken(seller)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void 업로드한_이미지를_imageUrl로_조회하면_같은_내용과_content_type이_내려온다() throws Exception {
+        User seller = user();
+        Product product = product(seller);
+        byte[] bytes = "png-bytes".getBytes();
+        MockMultipartFile image = new MockMultipartFile("image", "photo.png", "image/png", bytes);
+
+        String response = mockMvc.perform(multipart("/api/products/{id}/image", product.getId())
+                        .file(image)
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(seller)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        String imageUrl = (String) objectMapper.readValue(response, Map.class).get("imageUrl");
+
+        mockMvc.perform(get(imageUrl))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CONTENT_TYPE, "image/png"))
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, containsString("immutable")))
+                .andExpect(content().bytes(bytes));
+    }
+
+    @Test
+    void 없는_이미지를_조회하면_404를_반환한다() throws Exception {
+        mockMvc.perform(get("/images/{filename}", UUID.randomUUID() + ".jpg"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void 규칙에_맞지_않는_파일명으로_조회하면_404를_반환한다() throws Exception {
+        mockMvc.perform(get("/images/{filename}", "application.properties"))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/images/..%2F..%2Fbuild.gradle"))
                 .andExpect(status().isNotFound());
     }
 }
