@@ -33,7 +33,9 @@ Content-Type: application/json
   "amount": 15000,
   "bidAt": "2026-09-23T13:40:00",
   "isValid": true,
-  "extended": false
+  "extended": false,
+  "reason": null,
+  "minNextBid": 20000
 }
 ```
 
@@ -42,9 +44,15 @@ Content-Type: application/json
 BidService가 진 입찰 기록도 롤백 없이 남기도록 설계돼 있어(트랜잭션 안에서 예외를 던지지 않음), 그 설계와 HTTP 응답 의미를 일치시키기 위해
 409가 아닌 201 + `isValid: false`로 통일했다.
 
+`reason`과 `minNextBid`는 프론트가 "왜 입찰이 안 됐는지"를 사용자에게 알려줄 수 있도록 덧붙인 필드다 (기존 필드는 그대로라 호환된다).
+
+- `reason`: `isValid: false`일 때 사유 코드. 지금은 `AMOUNT_TOO_LOW`(현재가 + 입찰 단위를 넘기지 못함, 다른 사람이 먼저 올린 경우 포함) 하나다. 유효한 입찰이면 `null`.
+- `minNextBid`: **이 요청을 처리한 직후 기준으로 다음 입찰이 유효하려면 필요한 최소 금액**(현재가 + 입찰 단위). 상품 row를 잠근 채로 계산하므로 동시 입찰 중에도 그 순간의 정확한 값이다. 진 입찰이면 "이 금액 이상으로 다시 입찰하라"는 안내에 그대로 쓸 수 있다.
+- 본인 상품, 쿨다운, 마감 같은 다른 거절 사유는 이 응답이 아니라 아래 오류 코드(403/429/409)로 전달된다.
+
 `extended`는 **이 요청이 지금 막 마감 연장을 발생시켰는지** 여부다. 유효한 입찰이고, 마감까지 30초 이하로 남은 상태였다면 마감을 1분 연장하고 상품 status를 `EXTENDED`로 바꾼 뒤 `true`가 된다 (값은 `BidService.ANTI_SNIPING_WINDOW` / `EXTENSION_DURATION` 상수로 조정 가능). 진 입찰은 가격이 안 바뀌므로 연장 대상이 아니라 항상 `false`.
 
-⚠️ **연장은 상품당 최대 5회(`BidService.MAX_EXTENSIONS`)까지만 된다.** 5회를 넘으면 마감 임박 + 유효한 입찰이어도 가격만 갱신되고 `extended`는 `false`로 응답한다(무한정 연장 방지).
+⚠️ **연장은 상품당 최대 1회(`BidService.MAX_EXTENSIONS`)까지만 된다.** 1회를 넘으면 마감 임박 + 유효한 입찰이어도 가격만 갱신되고 `extended`는 `false`로 응답한다(무한정 연장 방지).
 
 ⚠️ **같은 유저가 같은 상품에 10초(`BidService.BID_COOLDOWN`) 이내 다시 입찰하면 요청 자체가 거절된다** (아래 `BID_COOLDOWN_ACTIVE` 참고). 매크로/연타성 어뷰징을 막기 위한 것으로, 이 경우엔 "진 입찰" 로그조차 남기지 않고 바로 에러를 반환한다.
 
@@ -62,7 +70,7 @@ BidService가 진 입찰 기록도 롤백 없이 남기도록 설계돼 있어(�
 | UNAUTHORIZED | 401 | Authorization 헤더가 없거나 토큰이 유효하지 않음(서명 불일치/만료) |
 | SELF_BID_NOT_ALLOWED | 403 | 판매자 본인이 자기 상품에 입찰 시도 (자전 거래 방지) |
 | PRODUCT_NOT_FOUND | 404 | 존재하지 않는 상품 |
-| AUCTION_NOT_IN_PROGRESS | 409 | 상품 status가 진행중/마감연장이 아님 (아직 시작 전이거나 이미 종료됨) |
+| AUCTION_NOT_IN_PROGRESS | 409 | 상품 status가 진행중/마감연장이 아님 (아직 시작 전이거나 이미 종료됨), 또는 **마감 시각이 지남** (스케줄러가 아직 마감 처리를 하기 전이어도 거절한다) |
 | BID_COOLDOWN_ACTIVE | 429 | 같은 유저가 같은 상품에 직전 입찰 후 10초 안에 다시 입찰함 |
 | INVALID_REQUEST | 400 | productId 누락, amount 누락/0 이하 등 요청 형식 자체가 잘못됨 |
 
@@ -73,5 +81,7 @@ BidService가 진 입찰 기록도 롤백 없이 남기도록 설계돼 있어(�
 ## 실시간 반영
 
 입찰 성공 시(`isValid: true`) Redis Pub/Sub 단일 채널 `auction_events`로 `bid_placed` 이벤트를 발행한다. `isValid: false`(진 입찰)는 발행하지 않는다. 마감이 연장되면(`extended: true`) `auction_extended` 이벤트도 함께 발행하고, 마감 스케줄러가 상품을 닫으면 `auction_closed` 이벤트도 발행한다 (낙찰/유찰 모두, 자세한 건 `auction-closing.md` 참고).
+
+**Redis가 멈춰 있어도 입찰/연장/마감 처리 자체는 정상 완료된다** (이벤트는 DB 커밋 뒤에 발행하므로). 이 경우 발행은 약 1초(`spring.data.redis.timeout`, 환경변수 `REDIS_TIMEOUT`) 안에 포기하고, 그 이벤트는 유실되어 다른 사용자 화면에 실시간으로 반영되지 않는다 (새로고침하면 DB 기준 값이 보인다). 유실은 로그(ERROR)와 지표 `auction_event_publish_failed_total{event=...}`로 확인한다.
 
 B(실시간 중계)가 이 채널 하나만 구독해 모든 이벤트를 받고, 받은 메시지를 그대로(pass-through) 브라우저에 전달하므로 payload에 `event` 필드(예: `"bid_placed"`)가 반드시 포함되어야 이벤트 종류를 구분할 수 있다. 이벤트 스펙은 [README.md](../../README.md)의 "WebSocket 이벤트" 섹션 참고 (`bid_placed`, `auction_extended`, `auction_closed`).

@@ -26,12 +26,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     public static final String AUTH_USER_ID_ATTRIBUTE = "authUserId";
 
-    // 토큰 검증이 필요한 엔드포인트만 명시적으로 지정한다 (화이트리스트 방식) - 조회 API,
+    // 토큰 검증이 필요한 엔드포인트만 명시적으로 지정한다 (화이트리스트 방식) - 상품/입찰 조회 API,
     // 회원가입, 로그인은 인증 없이 호출돼야 하므로 여기 넣지 않는다.
     private static final Set<String> PROTECTED_POST_PATHS = Set.of("/api/products", "/api/bids");
 
     // /{id}/image처럼 path variable이 끼는 경로는 Set으로 정확히 나열할 수 없어서 패턴으로 매칭한다.
     private static final Pattern PRODUCT_IMAGE_UPLOAD_PATH = Pattern.compile("^/api/products/[^/]+/image$");
+
+    // 사용자 조회(GET /api/users/{id})는 로그인한 사용자만 호출할 수 있다 (이슈 #149). 인증 없이 열려 있으면
+    // 입찰 이력/상품 응답으로 알 수 있는 사용자 id만으로 누구든 타인의 이메일과 크레딧을 조회할 수 있었다.
+    // 회원가입(POST /api/users)은 경로에 id가 없어서 이 패턴에 걸리지 않는다.
+    private static final Pattern USER_LOOKUP_PATH = Pattern.compile("^/api/users/[^/]+$");
 
     private final JwtService jwtService;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -68,10 +73,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private boolean isProtected(HttpServletRequest request) {
         // 기본("/") 디스패처 매핑에서는 getServletPath()가 빈 문자열을 반환하는 서블릿 컨테이너가 있어
         // 경로 매칭에 getRequestURI()를 쓴다 (컨텍스트 패스가 없는 구성이라 그대로 비교 가능).
+        String uri = request.getRequestURI();
+        if ("GET".equalsIgnoreCase(request.getMethod())) {
+            return USER_LOOKUP_PATH.matcher(uri).matches();
+        }
         if (!"POST".equalsIgnoreCase(request.getMethod())) {
             return false;
         }
-        String uri = request.getRequestURI();
         return PROTECTED_POST_PATHS.contains(uri) || PRODUCT_IMAGE_UPLOAD_PATH.matcher(uri).matches();
     }
 

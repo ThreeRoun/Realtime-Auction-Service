@@ -11,6 +11,9 @@ import {
   type SocketStatus,
 } from "../websocket/auctionSocket";
 
+// 엔진 ProductStatus 중 마감 이후의 상태 (낙찰확정, 유찰, 완료)
+const CLOSED_STATUSES = ["SOLD", "UNSOLD", "COMPLETED"];
+
 function ProductDetail() {
   const { id } = useParams();
   const [product, setProduct] = useState<Product | null>(null);
@@ -19,6 +22,7 @@ function ProductDetail() {
   const [endAt, setEndAt] = useState("");
   const [isAuctionClosed, setIsAuctionClosed] = useState(false);
   const [winnerId, setWinnerId] = useState<string | null>(null);
+  const [winnerUsername, setWinnerUsername] = useState<string | null>(null);
   const [finalPrice, setFinalPrice] = useState<number | null>(null);
   const [bidAmount, setBidAmount] = useState("");
   const [isBidding, setIsBidding] = useState(false);
@@ -34,6 +38,14 @@ function ProductDetail() {
         setProduct(foundProduct);
         setCurrentPrice(foundProduct.currentPrice);
         setEndAt(foundProduct.endAt);
+
+        // 이미 마감된 상품을 열었을 때도 입찰을 막고 결과를 보여준다. 예전에는 실시간 마감 이벤트를
+        // 받아야만 막혔고, 새로고침했거나 이벤트를 놓치면 마감된 상품에서도 입찰할 수 있는 것처럼 보였다 (이슈 #153).
+        if (CLOSED_STATUSES.includes(foundProduct.status)) {
+          setIsAuctionClosed(true);
+          setWinnerId(foundProduct.winnerId);
+          setWinnerUsername(foundProduct.winnerUsername ?? null);
+        }
       } else {
         setProduct(null);
       }
@@ -92,6 +104,17 @@ function ProductDetail() {
           setIsAuctionClosed(true);
           setWinnerId(data.winner_id);
           setFinalPrice(data.final_price);
+
+          // 이벤트에는 낙찰자 ID만 있어서, 닉네임은 상품 정보를 다시 읽어서 채운다 (엔진 이슈 #148).
+          // 실패하거나 닉네임이 아직 없으면 ID로 대신 보여준다.
+          fetch(`/api/products/${productId}`)
+            .then((response) => response.json())
+            .then((latest: Product) => {
+              setWinnerUsername(latest.winnerUsername ?? null);
+            })
+            .catch((error) => {
+              console.error("낙찰자 닉네임 조회 실패:", error);
+            });
         }
       },
       // 끊겨 있던 동안 놓친 입찰을 REST로 다시 불러와 현재가를 맞춘다
@@ -113,6 +136,22 @@ function ProductDetail() {
     };
   }, [productId]);
 
+  // 마감 시각이 지나면(엔진이 마감 처리하기 전이어도) 입찰을 막는다 (이슈 #153). 엔진도 마감 시각이 지난 입찰은
+  // 409로 거절하지만, 화면에서 먼저 알려주는 것이다. isAuctionClosed처럼 한번 켜지면 안 꺼지는 값이 아니라
+  // 현재 시각과 endAt에서 매번 계산하므로, 안티 스나이핑으로 마감이 연장되면(endAt이 늘어나면) 다시 입찰할 수 있다.
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setNow(Date.now()), 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  const isEndTimePassed = endAt !== "" && new Date(endAt).getTime() <= now;
+  const isBiddingClosed = isAuctionClosed || isEndTimePassed;
+
   const highestBid = bidHistory
     .filter((bid) => bid.isValid)
     .reduce<BidHistoryResponse | null>(
@@ -120,6 +159,17 @@ function ProductDetail() {
         highest === null || bid.amount > highest.amount ? bid : highest,
       null
     );
+
+  // 최종 낙찰가: 경매 종료 이벤트가 알려준 값이 가장 정확하다. 이미 마감된 상품을 열었을 때는 이벤트가 없어서
+  // 낙찰자의 가장 높은 유효 입찰가를 입찰 이력에서 찾아 보여주고(이력이 오기 전에는 현재가), 마감 처리는
+  // 상품의 현재가를 낙찰가로 바꾸지 않아서 크레딧 부족으로 차순위가 낙찰된 경우 현재가는 낙찰가와 다를 수 있다.
+  const winnerTopBidAmount = bidHistory
+    .filter((bid) => bid.isValid && bid.bidderId === winnerId)
+    .reduce<number | null>(
+      (max, bid) => (max === null || bid.amount > max ? bid.amount : max),
+      null
+    );
+  const displayFinalPrice = finalPrice ?? winnerTopBidAmount ?? currentPrice;
 
   if (!product) {
     return (
@@ -161,7 +211,14 @@ function ProductDetail() {
       setBidMessage(`${amount.toLocaleString()}원 입찰에 성공했습니다.`);
       setBidAmount("");
     } else {
-      setBidMessage("유효하지 않은 입찰입니다.");
+      // 가격을 넘지 못한 입찰이다. 엔진이 다음 입찰의 최소 금액(minNextBid)을 내려주면 그 값을 쓴다 -
+      // 내가 화면을 보는 사이 다른 사람이 먼저 올렸어도 서버 기준의 정확한 값이다.
+      // 아직 그 필드가 없는 엔진이면 화면의 현재가 + 입찰 단위로 계산한 값을 대신 쓴다 (어긋날 수 있다).
+      const minNextBid = result.minNextBid ?? currentPrice + product.bidUnit;
+
+      setBidMessage(
+        `현재 최소 입찰가는 ${minNextBid.toLocaleString()}원입니다. 더 높은 금액으로 입찰해 주세요.`
+      );
     }
   } catch (error) {
     console.error("입찰 요청 실패:", error);
@@ -220,7 +277,10 @@ function ProductDetail() {
             </p>
 
             <p>
-              최고 입찰자: {highestBid ? highestBid.bidderId : "아직 입찰자가 없습니다."}
+              최고 입찰자:{" "}
+              {highestBid
+                ? (highestBid.bidderUsername ?? highestBid.bidderId)
+                : "아직 입찰자가 없습니다."}
             </p>
 
             <p>
@@ -234,15 +294,22 @@ function ProductDetail() {
 
                 {winnerId !== null ? (
                   <>
-                    <p>낙찰자 ID: {winnerId}</p>
+                    {winnerUsername ? (
+                      <p>낙찰자: {winnerUsername}</p>
+                    ) : (
+                      <p>낙찰자 ID: {winnerId}</p>
+                    )}
                     <p>
-                      최종 낙찰가: {finalPrice?.toLocaleString() ?? "정보 없음"}원
+                      최종 낙찰가: {displayFinalPrice.toLocaleString()}원
                     </p>
                   </>
                 ) : (
                   <p>낙찰자가 없어 유찰되었습니다.</p>
                 )}
               </div>
+            )}
+            {!isAuctionClosed && isEndTimePassed && (
+              <p>경매가 마감되었습니다. 낙찰 결과를 집계하는 중입니다.</p>
             )}
           </div>
           <input
@@ -264,16 +331,16 @@ function ProductDetail() {
 
               setBidAmount(String(nextAmount));
             }}
-            disabled={isBidding || isAuctionClosed}
+            disabled={isBidding || isBiddingClosed}
           >
             +{product.bidUnit.toLocaleString()}원
           </button>
           <button
             type="button"
             onClick={handleBid}
-            disabled={isBidding || isAuctionClosed}
+            disabled={isBidding || isBiddingClosed}
           >
-            {isAuctionClosed
+            {isBiddingClosed
               ? "경매 종료"
               : isBidding
                 ? "입찰 처리 중..."

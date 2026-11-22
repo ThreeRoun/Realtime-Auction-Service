@@ -28,6 +28,8 @@ Content-Type: application/json
 | --- | --- | --- |
 | startAt | datetime (선택) | 프론트 상품 등록 폼에 시작 시각 입력란이 없어서(등록하면 바로 시작한다고 가정) 선택값. 생략하면 서버가 현재 시각으로 채운다. |
 
+⚠️ **시각은 시간대 정보가 없는 `LocalDateTime`이고, 서버는 한국 시각(`Asia/Seoul`)을 기준으로 마감 처리한다.** 서버가 UTC 컨테이너에서 돌아도 같은 기준이 되도록 `AuctionEngineApplication`이 JVM 기본 시간대를 고정한다(환경변수 `APP_TIMEZONE`으로 변경 가능, 잘못된 값이면 기동 실패). 요청의 `startAt`/`endAt`과 응답의 `startAt`/`endAt`/`createdAt`/입찰 시각(`bidAt`)이 모두 이 기준이다.
+
 ### 응답 - 성공 (201 Created)
 
 Product 객체 하나 (아래 GET 응답과 동일한 모양).
@@ -125,6 +127,7 @@ Product 객체 하나 (GET 응답과 동일한 모양, `imageUrl`이 새로 채�
     "startAt": "2026-09-26T10:00:00",
     "endAt": "2026-09-30T18:00:00",
     "winnerId": null,
+    "winnerUsername": null,
     "createdAt": "2026-09-20T09:00:00",
     "imageUrl": "/images/3f1e2b7a-....jpg"
   }
@@ -135,6 +138,7 @@ Product 객체 하나 (GET 응답과 동일한 모양, `imageUrl`이 새로 채�
 
 `sellerUsername`은 프론트가 "등록자"를 보여주기 위해 추가된 필드다 — `sellerId`로 다시
 `GET /api/users/{id}`를 호출할 필요 없이 이 응답 하나로 바로 표시할 수 있다.
+`winnerUsername`도 같은 목적(낙찰자 닉네임 표시)의 필드이며, 낙찰자가 없으면(`winnerId`가 `null`) `null`이다.
 
 ### 응답 - 실패 (GET /api/products)
 
@@ -174,6 +178,7 @@ Product 객체 하나 (GET 응답과 동일한 모양, `imageUrl`이 새로 채�
   {
     "bidId": "b1e0c6d2-...",
     "bidderId": "3fa85f64-...",
+    "bidderUsername": "demoBidder",
     "amount": 15000,
     "bidAt": "2026-09-23T13:40:00",
     "isValid": true
@@ -181,6 +186,7 @@ Product 객체 하나 (GET 응답과 동일한 모양, `imageUrl`이 새로 채�
 ]
 ```
 
+`bidderUsername`은 화면에서 UUID 대신 입찰자 닉네임을 보여주기 위한 필드다.
 `productId`는 URL에 이미 있으므로 응답에 다시 넣지 않는다. 상품은 존재하는데 입찰이
 없으면 빈 배열 `[]`.
 
