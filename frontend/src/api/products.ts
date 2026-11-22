@@ -84,3 +84,19 @@ export async function getMyProducts(
 
   return response.json();
 }
+
+export async function getProductById(
+  productId: string
+): Promise<Product> {
+  const response = await fetch(
+    `/api/products/${encodeURIComponent(productId)}`
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `상품 상세 조회에 실패했습니다. (${response.status})`
+    );
+  }
+
+  return response.json();
+}
