@@ -17,6 +17,15 @@ data:
   # auction-secret(Secret)의 JWT_SECRET/POSTGRES_USER/POSTGRES_PASSWORD가 빠지면
   # (이슈 #102) 조용히 기본값을 쓰는 대신 기동 자체가 실패한다.
   SPRING_PROFILES_ACTIVE: prod
+  # 트레이스 전송 설정 (OpenTelemetry 표준 환경변수, 이슈 #159). 계측(OTel 에이전트)이 없으면 아무 영향 없다.
+  # 트레이스는 monitoring 네임스페이스의 Alloy로 보내고(OTLP HTTP), Alloy가 Tempo로 전달한다.
+  # 서비스 이름은 Pod의 app 라벨(= Loki의 service 라벨)과 같아야 Grafana의 트레이스 -> 로그 이동이 동작한다.
+  OTEL_SERVICE_NAME: auction-engine
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy.monitoring.svc.cluster.local:4318
+  OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+  # 지표는 Prometheus, 로그는 stdout -> Alloy -> Loki로 이미 수집하므로 OTLP로는 트레이스만 보낸다
+  OTEL_METRICS_EXPORTER: none
+  OTEL_LOGS_EXPORTER: none
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -26,3 +35,9 @@ data:
   REDIS_HOST: auction-redis
   REDIS_PORT: "6379"
   PORT: "4000"
+  # 트레이스 전송 설정 (auction-engine-config 설명 참고). 계측(OTel Node SDK)이 없으면 아무 영향 없다.
+  OTEL_SERVICE_NAME: realtime-relay
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy.monitoring.svc.cluster.local:4318
+  OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+  OTEL_METRICS_EXPORTER: none
+  OTEL_LOGS_EXPORTER: none

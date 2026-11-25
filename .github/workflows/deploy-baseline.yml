@@ -194,7 +194,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   # 모니터링·로깅·알람 스택 (namespace: monitoring)
-  #   Prometheus / Alertmanager / node-exporter / kube-state-metrics / Loki / Alloy / Grafana
+  #   Prometheus / Alertmanager / node-exporter / kube-state-metrics / Loki / Tempo / Alloy / Grafana
   # - 앱 배포 job과 분리: 여기서 실패해도 앱은 롤백되지 않는다
   # - 앱 배포가 실패/건너뛰어져도 실행한다 (장애 상황일수록 모니터링이 필요)
   deploy-monitoring:
@@ -203,7 +203,7 @@ jobs:
     runs-on: [self-hosted, school-server]
     env:
       MON_NAMESPACE: monitoring
-      MON_APPS: prometheus alertmanager kube-state-metrics loki alloy grafana triage-bot
+      MON_APPS: prometheus alertmanager kube-state-metrics loki tempo alloy grafana triage-bot
     steps:
       - name: Checkout
         uses: actions/checkout@v4
