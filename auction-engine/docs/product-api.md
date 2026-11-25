@@ -48,6 +48,31 @@ Product 객체 하나 (아래 GET 응답과 동일한 모양).
 | 400 | INVALID_REQUEST | title/startingPrice/bidUnit/startAt/endAt 중 필수값 누락, 또는 형식 오류 |
 | 400 | (메시지만) | endAt이 startAt보다 앞이거나 같음 |
 
+## POST /api/products/{id}/cancel
+
+판매자가 경매를 취소한다 (이슈 #183). **인증 필요**, 그리고 **본인이 등록한 상품만** 취소 가능. 요청 body 없음.
+
+취소할 수 있는 경매:
+- 상태가 `PENDING`(등록대기), `IN_PROGRESS`(진행중), `EXTENDED`(마감연장) 중 하나이고 마감 시각이 아직 지나지 않음
+- 유효한 입찰(`is_valid=true`)이 하나도 없음. 진 입찰(무효 입찰)만 있으면 취소할 수 있다
+
+취소되면 상태가 `CANCELLED`가 되고, 이후 입찰은 `409 AUCTION_NOT_IN_PROGRESS`로 거절된다.
+커밋 후 Redis로 `auction_cancelled` 이벤트를 발행한다 (`realtime-relay/README.md` 참고).
+
+### 응답 - 성공 (200 OK)
+
+취소된 상품. 모양은 `GET /api/products/{id}`와 같고 `status`가 `CANCELLED`다.
+
+### 응답 - 실패
+
+| HTTP status | code | 설명 |
+| --- | --- | --- |
+| 401 | UNAUTHORIZED | Authorization 헤더가 없거나 토큰이 유효하지 않음 |
+| 403 | NOT_PRODUCT_OWNER | 판매자 본인이 아님 |
+| 404 | PRODUCT_NOT_FOUND | 상품이 없음 |
+| 409 | AUCTION_ALREADY_ENDED | 이미 종료(낙찰·유찰·완료·취소)됐거나, 마감 시각이 지나 마감 처리를 기다리는 경매 |
+| 409 | AUCTION_HAS_BIDS | 유효한 입찰이 있는 경매 |
+
 ## POST /api/products/{id}/image
 
 상품 이미지를 업로드한다. 등록(`POST /api/products`)과 별도 엔드포인트로 둔 이유는 등록 요청이
@@ -104,7 +129,7 @@ Product 객체 하나 (GET 응답과 동일한 모양, `imageUrl`이 새로 채�
 
 | 파라미터 | 설명 |
 | --- | --- |
-| status | 없으면 기본값(`IN_PROGRESS`, `EXTENDED` — 즉 입찰 가능한 진행중 상품)만 반환. `all`이면 전체 상태 반환. `PENDING`/`SOLD`/`UNSOLD`/`COMPLETED` 등 특정 상태 하나만 넘기면 그 상태만 필터링. `sellerId`나 `biddedByUserId`를 같이 넘기면 이 기본값 대신 전체 상태가 기본값이 된다 (마이페이지는 상태 무관하게 전체 이력을 보여줘야 하므로). |
+| status | 없으면 기본값(`IN_PROGRESS`, `EXTENDED` — 즉 입찰 가능한 진행중 상품)만 반환. `all`이면 전체 상태 반환. `ended`면 종료된 경매(`SOLD`, `UNSOLD`, `COMPLETED`, `CANCELLED`)만 반환. `PENDING`/`SOLD`/`UNSOLD`/`COMPLETED`/`CANCELLED` 등 특정 상태 하나만 넘기면 그 상태만 필터링. `sellerId`나 `biddedByUserId`를 같이 넘기면 이 기본값 대신 전체 상태가 기본값이 된다 (마이페이지는 상태 무관하게 전체 이력을 보여줘야 하므로). |
 | sellerId | 마이페이지 "등록한 경매" 용도. 이 유저가 등록한 상품만 반환. |
 | biddedByUserId | 마이페이지 "참여 중인 경매" 용도. 이 유저가 (진 입찰 포함) 입찰한 적 있는 상품만 반환. "낙찰된 경매"는 별도 파라미터 없이, 이 응답에서 프론트가 `status === "SOLD" && winnerId === 내 id`로 걸러내면 된다. |
 
@@ -144,7 +169,7 @@ Product 객체 하나 (GET 응답과 동일한 모양, `imageUrl`이 새로 채�
 
 | HTTP status | 설명 |
 | --- | --- |
-| 400 | status 파라미터 값이 `ProductStatus` enum 값도 아니고 `all`도 아님 |
+| 400 | status 파라미터 값이 `ProductStatus` enum 값도 아니고 `all`/`ended`도 아님 |
 
 ### ⚠️ 프론트(C) 연동 시 주의 — 기존 임시 타입과 다른 부분
 
@@ -152,7 +177,7 @@ Product 객체 하나 (GET 응답과 동일한 모양, `imageUrl`이 새로 채�
 
 1. **`id`가 `number`가 아니라 `string`(UUID)이다.** `Number(id)` 같은 변환 코드가 있다면 제거해야 함.
 2. **`status` 값이 `"active" | "extended" | "closed"`가 아니라 실제 엔티티 enum 그대로다:**
-   `PENDING`(등록대기) / `IN_PROGRESS`(진행중) / `EXTENDED`(마감연장) / `SOLD`(낙찰확정) / `UNSOLD`(유찰) / `COMPLETED`(완료).
+   `PENDING`(등록대기) / `IN_PROGRESS`(진행중) / `EXTENDED`(마감연장) / `SOLD`(낙찰확정) / `UNSOLD`(유찰) / `COMPLETED`(완료) / `CANCELLED`(경매취소).
    기본 목록 조회(status 파라미터 없음) 결과에는 `IN_PROGRESS`, `EXTENDED`만 나오므로, 목록 화면에서는 사실상 이 두 값만 처리하면 된다.
 
 ## GET /api/products/{id}

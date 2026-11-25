@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { jwtDecode } from "jwt-decode";
 import { getUserProfile, type UserProfile } from "../api/auth";
 import type { Product } from "../data/products";
+import { cancelAuction } from "../api/products";
 import {
   placeBid,
   getBidHistory,
@@ -31,6 +32,9 @@ function ProductDetail() {
   const [isBidding, setIsBidding] = useState(false);
   const [bidMessage, setBidMessage] = useState("");
   const [socketStatus, setSocketStatus] = useState<SocketStatus>("connecting");
+  const [isCancelled, setIsCancelled] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [cancelMessage, setCancelMessage] = useState("");
   useEffect(() => {
     const accessToken = localStorage.getItem("accessToken");
 
@@ -63,7 +67,9 @@ function ProductDetail() {
 
         // 이미 마감된 상품을 열었을 때도 입찰을 막고 결과를 보여준다. 예전에는 실시간 마감 이벤트를
         // 받아야만 막혔고, 새로고침했거나 이벤트를 놓치면 마감된 상품에서도 입찰할 수 있는 것처럼 보였다 (이슈 #153).
-        if (CLOSED_STATUSES.includes(foundProduct.status)) {
+        if (foundProduct.status === "CANCELLED") {
+          setIsCancelled(true);
+        } else if (CLOSED_STATUSES.includes(foundProduct.status)) {
           setIsAuctionClosed(true);
           setWinnerId(foundProduct.winnerId);
           setWinnerUsername(foundProduct.winnerUsername ?? null);
@@ -116,6 +122,10 @@ function ProductDetail() {
             .catch((error) => {
               console.error("입찰 후 최고 입찰자 갱신 실패:", error);
             });
+        }
+
+        if (data.event === "auction_cancelled") {
+          setIsCancelled(true);
         }
 
         if (data.event === "auction_extended") {
@@ -172,7 +182,7 @@ function ProductDetail() {
   }, []);
 
   const isEndTimePassed = endAt !== "" && new Date(endAt).getTime() <= now;
-  const isBiddingClosed = isAuctionClosed || isEndTimePassed;
+  const isBiddingClosed = isAuctionClosed || isEndTimePassed || isCancelled;
 
   const remainingSeconds = endAt
     ? Math.max(0, Math.ceil((new Date(endAt).getTime() - now) / 1000))
@@ -274,6 +284,37 @@ function ProductDetail() {
   }
   };
 
+  // 판매자 본인이고, 아직 끝나지 않았고, 유효 입찰이 없을 때만 취소 버튼을 보여준다.
+  // 엔진도 같은 조건을 다시 확인하므로(이슈 #183) 화면 판단이 늦어도 잘못 취소되지는 않는다.
+  const canCancel =
+    user !== null &&
+    user.id === product.sellerId &&
+    !isBiddingClosed &&
+    highestBid === null;
+
+  const handleCancel = async () => {
+    if (!window.confirm("이 경매를 취소할까요? 취소한 경매는 되돌릴 수 없습니다.")) {
+      return;
+    }
+
+    setCancelMessage("");
+
+    try {
+      setIsCancelling(true);
+      await cancelAuction(product.id);
+      setIsCancelled(true);
+    } catch (error) {
+      console.error("경매 취소 실패:", error);
+      setCancelMessage(
+        error instanceof Error
+          ? error.message
+          : "경매 취소 중 오류가 발생했습니다."
+      );
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
   return (
     <main className="page-container">
       <div className="product-detail">
@@ -333,7 +374,11 @@ function ProductDetail() {
             <p>
               남은 시간:{" "}
               <strong>
-                {isBiddingClosed ? "경매 종료" : countdown}
+                {isCancelled
+                  ? "경매 취소"
+                  : isBiddingClosed
+                    ? "경매 종료"
+                    : countdown}
               </strong>
             </p>
             <p>
@@ -362,7 +407,13 @@ function ProductDetail() {
                 )}
               </div>
             )}
-            {!isAuctionClosed && isEndTimePassed && (
+            {isCancelled && (
+              <div className="auction-result">
+                <h3>경매 취소</h3>
+                <p>판매자가 취소한 경매입니다.</p>
+              </div>
+            )}
+            {!isAuctionClosed && !isCancelled && isEndTimePassed && (
               <p>경매가 마감되었습니다. 낙찰 결과를 집계하는 중입니다.</p>
             )}
           </div>
@@ -402,7 +453,9 @@ function ProductDetail() {
             onClick={handleBid}
             disabled={isBidding || isBiddingClosed}
           >
-            {isBiddingClosed
+            {isCancelled
+              ? "경매 취소"
+              : isBiddingClosed
               ? "경매 종료"
               : isBidding
                 ? "입찰 처리 중..."
@@ -411,6 +464,20 @@ function ProductDetail() {
           {bidMessage && (
             <p className="bid-message">
               {bidMessage}
+            </p>
+          )}
+          {canCancel && (
+            <button
+              type="button"
+              onClick={handleCancel}
+              disabled={isCancelling}
+            >
+              {isCancelling ? "취소 처리 중..." : "경매 취소"}
+            </button>
+          )}
+          {cancelMessage && (
+            <p className="bid-message">
+              {cancelMessage}
             </p>
           )}
         </div>

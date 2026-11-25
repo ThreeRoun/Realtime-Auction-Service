@@ -19,6 +19,12 @@ export interface AuctionClosedEvent {
   final_price: number | null;
 }
 
+// 판매자가 유효 입찰이 없는 경매를 취소했을 때 (엔진 이슈 #183)
+export interface AuctionCancelledEvent {
+  event: "auction_cancelled";
+  product_id: string;
+}
+
 export interface ConnectedEvent {
   event: "connected";
   message: string;
@@ -28,7 +34,8 @@ export type AuctionEvent =
   | ConnectedEvent
   | BidPlacedEvent
   | AuctionExtendedEvent
-  | AuctionClosedEvent;
+  | AuctionClosedEvent
+  | AuctionCancelledEvent;
 
 // 로비(scope=lobby) 이벤트: relay가 목록 화면에 필요한 필드만 추려서 보낸다.
 // bidder_id, bid_at, winner_id는 포함되지 않는다.
@@ -36,7 +43,8 @@ export type LobbyEvent =
   | ConnectedEvent
   | { event: "bid_placed"; product_id: string; current_price: number }
   | { event: "auction_extended"; product_id: string; new_end_at: string }
-  | { event: "auction_closed"; product_id: string; final_price: number | null };
+  | { event: "auction_closed"; product_id: string; final_price: number | null }
+  | { event: "auction_cancelled"; product_id: string };
 
 export type SocketStatus = "connecting" | "open" | "reconnecting" | "closed";
 

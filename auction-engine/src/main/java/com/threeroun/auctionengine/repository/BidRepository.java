@@ -26,6 +26,9 @@ public interface BidRepository extends JpaRepository<Bid, UUID> {
     // (Bid 엔티티의 실제 필드명이 valid라서 isValid가 아니라 Valid로 참조해야 한다 - getter만 isValid())
     List<Bid> findByProductIdAndValidTrueOrderByAmountDesc(UUID productId);
 
+    // 경매 취소용: 유효한 입찰이 하나라도 있으면 판매자가 취소할 수 없다.
+    boolean existsByProductIdAndValidTrue(UUID productId);
+
     // 입찰 이력 조회용: 최근 입찰이 먼저 나오도록 정렬.
     // 응답(bidderUsername)을 만들 시점엔 세션이 이미 닫혀 있어서(open-in-view=false), bidder를
     // join fetch로 미리 채워 와야 한다. 안 그러면 입찰 건수만큼 쿼리가 늘거나(N+1) 지연 로딩 예외가 난다.

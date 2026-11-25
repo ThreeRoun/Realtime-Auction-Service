@@ -1,5 +1,7 @@
 package com.threeroun.auctionengine.controller;
 
+import com.threeroun.auctionengine.service.AuctionCancelNotAllowedException;
+import com.threeroun.auctionengine.service.AuctionNotCancellableException;
 import com.threeroun.auctionengine.service.AuctionNotInProgressException;
 import com.threeroun.auctionengine.service.BidCooldownException;
 import com.threeroun.auctionengine.service.DuplicateUserException;
@@ -66,6 +68,18 @@ public class ApiExceptionHandler {
     @ResponseStatus(HttpStatus.FORBIDDEN)
     public ErrorResponse handleProductImageUploadNotAllowed(ProductImageUploadNotAllowedException e) {
         return new ErrorResponse("NOT_PRODUCT_OWNER", e.getMessage());
+    }
+
+    @ExceptionHandler(AuctionCancelNotAllowedException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public ErrorResponse handleAuctionCancelNotAllowed(AuctionCancelNotAllowedException e) {
+        return new ErrorResponse("NOT_PRODUCT_OWNER", e.getMessage());
+    }
+
+    @ExceptionHandler(AuctionNotCancellableException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleAuctionNotCancellable(AuctionNotCancellableException e) {
+        return new ErrorResponse(e.getCode(), e.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

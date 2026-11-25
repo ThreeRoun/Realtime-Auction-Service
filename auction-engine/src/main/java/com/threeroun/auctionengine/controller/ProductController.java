@@ -6,6 +6,7 @@ import com.threeroun.auctionengine.domain.User;
 import com.threeroun.auctionengine.repository.BidRepository;
 import com.threeroun.auctionengine.repository.ProductRepository;
 import com.threeroun.auctionengine.repository.UserRepository;
+import com.threeroun.auctionengine.service.AuctionCancelService;
 import com.threeroun.auctionengine.service.ProductImageService;
 import com.threeroun.auctionengine.service.ProductNotFoundException;
 import com.threeroun.auctionengine.service.UserNotFoundException;
@@ -42,17 +43,24 @@ public class ProductController {
     // (BidService가 입찰을 허용하는 상태 집합과 반드시 일치시켜야 프론트에 보이는 상품 = 입찰 가능한 상품이 된다).
     private static final List<ProductStatus> DEFAULT_STATUSES = List.of(ProductStatus.IN_PROGRESS, ProductStatus.EXTENDED);
 
+    // status=ended: 끝난 경매(낙찰, 유찰, 완료, 취소). 상품 목록·마이페이지의 "종료" 탭에서 쓴다 (이슈 #183).
+    private static final List<ProductStatus> ENDED_STATUSES = List.of(ProductStatus.SOLD, ProductStatus.UNSOLD,
+            ProductStatus.COMPLETED, ProductStatus.CANCELLED);
+
     private final ProductRepository productRepository;
     private final UserRepository userRepository;
     private final BidRepository bidRepository;
     private final ProductImageService productImageService;
+    private final AuctionCancelService auctionCancelService;
 
     public ProductController(ProductRepository productRepository, UserRepository userRepository,
-                              BidRepository bidRepository, ProductImageService productImageService) {
+                              BidRepository bidRepository, ProductImageService productImageService,
+                              AuctionCancelService auctionCancelService) {
         this.productRepository = productRepository;
         this.userRepository = userRepository;
         this.bidRepository = bidRepository;
         this.productImageService = productImageService;
+        this.auctionCancelService = auctionCancelService;
     }
 
     @GetMapping
@@ -71,6 +79,8 @@ public class ProductController {
                     : productRepository.findByStatusInOrderByEndAtAsc(DEFAULT_STATUSES);
         } else if (status.equalsIgnoreCase("all")) {
             products = productRepository.findAllByOrderByEndAtAsc();
+        } else if (status.equalsIgnoreCase("ended")) {
+            products = productRepository.findByStatusInOrderByEndAtAsc(ENDED_STATUSES);
         } else {
             products = productRepository.findByStatusOrderByEndAtAsc(parseStatus(status));
         }
@@ -156,6 +166,15 @@ public class ProductController {
 
         Product product = productImageService.uploadImage(id, requesterId, extension, image.getContentType(), content);
         return ProductResponse.from(product);
+    }
+
+    // 판매자가 유효 입찰이 없는 경매를 취소한다 (이슈 #183). 취소 가능 조건은 AuctionCancelService 참고.
+    @PostMapping("/{id}/cancel")
+    public ProductResponse cancel(@PathVariable UUID id,
+                                  @RequestAttribute(AUTH_USER_ID_ATTRIBUTE) UUID requesterId) {
+        auctionCancelService.cancel(id, requesterId);
+        // 서비스의 트랜잭션이 끝난 뒤라 seller/winner를 join fetch로 다시 읽어야 응답을 만들 수 있다.
+        return detail(id);
     }
 
     private ProductStatus parseStatus(String status) {
