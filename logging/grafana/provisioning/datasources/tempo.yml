@@ -1,0 +1,22 @@
+# Grafana 시작 시 Tempo 데이터 소스를 자동으로 등록한다.
+# 트레이스 화면에서 span을 누르면 같은 trace_id를 가진 로그를 Loki에서 바로 찾는다 (trace -> log).
+apiVersion: 1
+
+datasources:
+  - name: Tempo
+    type: tempo
+    uid: tempo
+    access: proxy
+    url: http://tempo:3200
+    jsonData:
+      tracesToLogsV2:
+        datasourceUid: loki
+        # span 앞뒤 1분까지 로그를 찾는다 (로그와 span 시각이 조금 어긋날 수 있어서)
+        spanStartTimeShift: "-1m"
+        spanEndTimeShift: "1m"
+        # span의 service.name을 Loki의 service 라벨로 바꿔 해당 서비스 로그만 본다
+        tags:
+          - key: service.name
+            value: service
+        # 로그 줄에 trace_id 문자열이 들어 있는 것만 고른다
+        filterByTraceID: true

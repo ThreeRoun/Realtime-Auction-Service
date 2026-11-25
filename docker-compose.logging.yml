@@ -1,4 +1,4 @@
-# 로그 수집·분석 스택 (Loki + Grafana Alloy + Grafana)
+# 로그·트레이스 수집·분석 스택 (Loki + Tempo + Grafana Alloy + Grafana)
 # 기존 서비스 compose 파일과 함께 실행한다:
 #   docker compose -f docker-compose.yml -f docker-compose.logging.yml up -d --build
 
@@ -13,6 +13,29 @@ services:
     volumes:
       - loki-data:/loki
 
+  # Tempo는 10001 사용자로 실행되는데, 새 볼륨은 root 소유로 만들어져 쓰기 권한이 없다.
+  # 그래서 시작 전에 한 번 소유자를 바꿔 준다 (Tempo 공식 docker-compose 예시와 같은 방식)
+  tempo-init:
+    image: busybox:1.37
+    user: root
+    entrypoint: ["chown", "10001:10001", "/var/tempo"]
+    volumes:
+      - tempo-data:/var/tempo
+
+  tempo:
+    image: grafana/tempo:2.10.10
+    container_name: auction-tempo
+    restart: unless-stopped
+    command: -config.file=/etc/tempo/tempo.yaml
+    ports:
+      - "3200:3200"   # 조회 API (Grafana, 상태 확인용). 트레이스 수신(4317)은 Alloy만 쓰므로 열지 않는다
+    volumes:
+      - ./logging/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    depends_on:
+      tempo-init:
+        condition: service_completed_successfully
+
   alloy:
     image: grafana/alloy:v1.11.0
     container_name: auction-alloy
@@ -24,11 +47,15 @@ services:
       - /etc/alloy/config.alloy
     ports:
       - "12345:12345"
+      # 트레이스 수신 (OTLP). compose 밖(로컬에서 직접 실행한 엔진, relay)에서도 보낼 수 있게 연다
+      - "4317:4317"   # gRPC
+      - "4318:4318"   # HTTP
     volumes:
       - ./logging/alloy/config.alloy:/etc/alloy/config.alloy:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
       - loki
+      - tempo
 
   grafana:
     image: grafana/grafana:12.1.1
@@ -45,7 +72,9 @@ services:
       - grafana-data:/var/lib/grafana
     depends_on:
       - loki
+      - tempo
 
 volumes:
   loki-data:
+  tempo-data:
   grafana-data:
