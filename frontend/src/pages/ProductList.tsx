@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import ProductCard from "../components/ProductCard";
 import type { Product } from "../data/products";
 import {
@@ -13,7 +14,24 @@ function ProductList() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const [activeTab, setActiveTab] = useState<AuctionTab>("active");
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const activeTab: AuctionTab =
+    searchParams.get("tab") === "ended" ? "ended" : "active";
+
+  const setActiveTab = (tab: AuctionTab) => {
+    if (tab === activeTab) return;
+
+    const nextParams = new URLSearchParams(searchParams);
+
+    if (tab === "ended") {
+      nextParams.set("tab", "ended");
+    } else {
+      nextParams.delete("tab");
+    }
+
+    setSearchParams(nextParams);
+  };
   const [socketStatus, setSocketStatus] =
     useState<SocketStatus>("connecting");
 

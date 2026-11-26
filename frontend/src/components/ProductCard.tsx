@@ -33,7 +33,11 @@ function ProductCard({ product }: ProductCardProps) {
         <p>{product.description}</p>
 
         <div className="product-status">
-          상태: {getStatusLabel(product.status)}
+          <span
+            className={`auction-status-badge status-${product.status.toLowerCase()}`}
+          >
+            {getStatusLabel(product.status)}
+          </span>
         </div>
 
         <div className="product-price">

@@ -387,3 +387,50 @@
   font-size: 14px;
   font-weight: 600;
 }
+
+/* 경매 상태 배지 */
+.auction-status-badge {
+  display: inline-block;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+/* 진행 중 */
+.auction-status-badge.status-in_progress {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+/* 마감 연장 */
+.auction-status-badge.status-extended {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+/* 낙찰 */
+.auction-status-badge.status-sold {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+/* 유찰 */
+.auction-status-badge.status-unsold {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+/* 완료 */
+.auction-status-badge.status-completed {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+/* 경매 취소 */
+.auction-status-badge.status-cancelled {
+  background: #fee2e2;
+  color: #b91c1c;
+}
