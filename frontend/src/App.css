@@ -350,3 +350,40 @@
 .product-detail-info button:first-of-type:hover:not(:disabled) {
   background: #dfe1e5;
 }
+
+
+/* 상품 목록 - 진행 중 / 종료 탭 */
+.auction-tabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.auction-tab {
+  padding: 10px 24px;
+  border: 1px solid #d5d7db;
+  border-radius: 8px;
+  background: #fff;
+  color: #666;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.auction-tab:hover {
+  background: #f0f0f0;
+}
+
+.auction-tab.active {
+  background: #222;
+  border-color: #222;
+  color: #fff;
+}
+
+/* 상품 카드 - 경매 상태 */
+.product-status {
+  margin-bottom: 10px;
+  color: #666;
+  font-size: 14px;
+  font-weight: 600;
+}
