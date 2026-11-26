@@ -95,7 +95,23 @@
 }
 ```
 
-### 5. 로비 이벤트 (`scope=lobby` 접속 시)
+### 5. `bid_cancelled` (입찰이 취소됐을 때)
+
+입찰자가 자신의 입찰을 취소했을 때 발생합니다. `current_price`와 `bidder_id`는 **취소를 반영한 값**입니다.
+최고 입찰이 취소되면 직전 유효 입찰로 되돌아간 현재가와 그 입찰자이고, 되돌릴 입찰이 없으면 시작가와 `null`입니다.
+`cancelled_bid_ids`에는 직접 취소된 입찰뿐 아니라, 되돌리는 과정에서 크레딧 부족으로 건너뛰며 취소된 입찰도 들어갑니다.
+
+```json
+{
+  "event": "bid_cancelled",
+  "product_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "current_price": 30000,
+  "bidder_id": "11111111-1111-1111-1111-111111111111",
+  "cancelled_bid_ids": ["22222222-2222-2222-2222-222222222222"]
+}
+```
+
+### 6. 로비 이벤트 (`scope=lobby` 접속 시)
 
 로비는 모든 상품의 이벤트를 받으며, 목록 화면에 필요한 필드만 전달합니다.
 `bidder_id`, `bid_at`, `winner_id`는 포함되지 않습니다.
@@ -106,6 +122,7 @@
 | `auction_extended` | `event`, `product_id`, `new_end_at` |
 | `auction_closed` | `event`, `product_id`, `final_price` |
 | `auction_cancelled` | `event`, `product_id` |
+| `bid_cancelled` | `event`, `product_id`, `current_price` |
 
 ```json
 {

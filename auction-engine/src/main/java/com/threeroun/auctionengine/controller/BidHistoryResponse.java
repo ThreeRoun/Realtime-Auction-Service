@@ -18,8 +18,13 @@ public record BidHistoryResponse(
         String bidderUsername,
         Integer amount,
         LocalDateTime bidAt,
-        @JsonProperty("isValid") boolean isValid
+        @JsonProperty("isValid") boolean isValid,
+        LocalDateTime cancelledAt,
+        String cancelReason
 ) {
+    // isValid는 "지금도 효력이 있는 입찰인가"(취소되지 않았는가)까지 반영한 값으로 내려준다. DB의 is_valid는
+    // 입찰이 들어온 순간의 기록이라 취소돼도 true로 남지만, 화면은 isValid로 최고가와 낙찰가를 계산하므로
+    // 취소된 입찰이 유효로 보이면 안 된다 (이슈 #182). 취소 여부와 사유는 cancelledAt/cancelReason으로 따로 준다.
     public static BidHistoryResponse from(Bid bid) {
         return new BidHistoryResponse(
                 bid.getId(),
@@ -27,6 +32,8 @@ public record BidHistoryResponse(
                 bid.getBidder().getUsername(),
                 bid.getAmount(),
                 bid.getBidAt(),
-                bid.isValid());
+                bid.isActive(),
+                bid.getCancelledAt(),
+                bid.getCancelReason());
     }
 }

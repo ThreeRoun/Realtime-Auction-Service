@@ -35,9 +35,13 @@ Content-Type: application/json
   "isValid": true,
   "extended": false,
   "reason": null,
-  "minNextBid": 20000
+  "minNextBid": 20000,
+  "availableCredit": 485000
 }
 ```
+
+`availableCredit`은 이 입찰을 처리한 직후 입찰자의 사용 가능 크레딧(보유 크레딧에서 진행중 경매에 묶인 금액을 뺀 값)이다.
+화면이 입찰 직후 크레딧 표시를 바로 갱신할 수 있다.
 
 ⚠️ **"진 입찰"(최저 입찰 단위 미달, 동시 입찰 경쟁에서 밀림)도 항상 201로 응답한다.** `isValid: false`로만 구분한다.
 요청 자체는 정상 접수된 것이고(Bid 로그 테이블에 기록됨, README의 "로그 테이블" 방침), 단지 최고가 갱신에는 실패했다는 의미다.
@@ -75,13 +79,51 @@ BidService가 진 입찰 기록도 롤백 없이 남기도록 설계돼 있어(�
 | BID_COOLDOWN_ACTIVE | 429 | 같은 유저가 같은 상품에 직전 입찰 후 10초 안에 다시 입찰함 |
 | INVALID_REQUEST | 400 | productId 누락, amount 누락/0 이하 등 요청 형식 자체가 잘못됨 |
 
+## DELETE /api/bids/{bidId}
+
+본인의 입찰을 취소한다. 인증 필요(`Authorization: Bearer ...`). 진행중(`IN_PROGRESS`/`EXTENDED`)이고 마감 시각 전인 경매의
+**효력이 있는 입찰**(최고가를 갱신했고 아직 취소되지 않은 입찰)만 취소할 수 있다.
+
+### 응답 - 성공 (200 OK)
+
+```json
+{
+  "bidId": "b1e0c6d2-...",
+  "productId": "3fa85f64-...",
+  "currentPrice": 30000,
+  "topBidderId": "11111111-...",
+  "cancelledBidIds": ["b1e0c6d2-..."],
+  "availableCredit": 500000
+}
+```
+
+- 취소한 입찰은 로그에서 지우지 않는다. `bids.cancelled_at`(취소 시각)과 `cancel_reason`(`USER`, `CREDIT_SHORTFALL`)만 남기고 `is_valid`는 그대로 둔다.
+  입찰 이력 API(`GET /api/products/{id}/bids`)의 `isValid`는 "지금도 효력이 있는가"를 반영해서 취소된 입찰은 `false`로 내려간다.
+- **최고 입찰이 아닌 입찰**을 취소하면 현재가와 최고 입찰자는 그대로다.
+- **최고 입찰을 취소**하면 현재가를 남은 유효 입찰 중 하나로 되돌린다. 후보는 금액이 높은 순이고, **지금 그 입찰자의 사용 가능 크레딧이
+  입찰 금액 이상인 입찰**을 새 최고 입찰로 삼는다. 추월당해 묶임이 풀린 입찰자가 그 사이 다른 경매에 크레딧을 썼으면 그 입찰은 건너뛰고,
+  시스템이 `cancel_reason = CREDIT_SHORTFALL`로 취소 처리한다(`cancelledBidIds`에 함께 담긴다). 자격 있는 입찰이 없으면
+  현재가는 시작가로 돌아가고 `topBidderId`는 `null`이다 (경매는 계속되고, 입찰이 없으면 마감 때 유찰된다).
+- 마감 시각과 연장 횟수는 되돌리지 않는다.
+- 취소하면 `bid_cancelled` 이벤트를 발행한다 (아래 "실시간 반영").
+
+### 응답 - 실패
+
+| code | HTTP status | 설명 |
+| --- | --- | --- |
+| UNAUTHORIZED | 401 | Authorization 헤더가 없거나 토큰이 유효하지 않음 |
+| NOT_BID_OWNER | 403 | 다른 사람의 입찰 |
+| BID_NOT_FOUND | 404 | 존재하지 않는 입찰 |
+| BID_NOT_ACTIVE | 409 | 이미 취소됐거나, 최고가를 갱신하지 못한 입찰(`isValid: false`) |
+| AUCTION_NOT_IN_PROGRESS | 409 | 경매가 진행중이 아니거나 마감 시각이 지남 |
+
 ### 미구현 (다음 단계)
 
 - `productEndAt`, `productCurrentPrice` 필드는 응답에 없음. 최신 현재가/마감시각은 `GET /api/products`로 별도 조회해야 한다.
 
 ## 실시간 반영
 
-입찰 성공 시(`isValid: true`) Redis Pub/Sub 단일 채널 `auction_events`로 `bid_placed` 이벤트를 발행한다. `isValid: false`(진 입찰)는 발행하지 않는다. 마감이 연장되면(`extended: true`) `auction_extended` 이벤트도 함께 발행하고, 마감 스케줄러가 상품을 닫으면 `auction_closed` 이벤트도 발행한다 (낙찰/유찰 모두, 자세한 건 `auction-closing.md` 참고).
+입찰 성공 시(`isValid: true`) Redis Pub/Sub 단일 채널 `auction_events`로 `bid_placed` 이벤트를 발행한다. `isValid: false`(진 입찰)는 발행하지 않는다. 마감이 연장되면(`extended: true`) `auction_extended` 이벤트도 함께 발행하고, 마감 스케줄러가 상품을 닫으면 `auction_closed` 이벤트도 발행한다 (낙찰/유찰 모두, 자세한 건 `auction-closing.md` 참고). 입찰을 취소하면 `bid_cancelled` 이벤트를 발행한다 (`current_price`와 `bidder_id`는 취소를 반영한 값, `cancelled_bid_ids`는 이번에 취소된 입찰 전부).
 
 **Redis가 멈춰 있어도 입찰/연장/마감 처리 자체는 정상 완료된다** (이벤트는 DB 커밋 뒤에 발행하므로). 이 경우 발행은 약 1초(`spring.data.redis.timeout`, 환경변수 `REDIS_TIMEOUT`) 안에 포기하고, 그 이벤트는 유실되어 다른 사용자 화면에 실시간으로 반영되지 않는다 (새로고침하면 DB 기준 값이 보인다). 유실은 로그(ERROR)와 지표 `auction_event_publish_failed_total{event=...}`로 확인한다.
 

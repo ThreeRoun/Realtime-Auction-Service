@@ -207,10 +207,15 @@ Product 객체 하나 (GET 응답과 동일한 모양, `imageUrl`이 새로 채�
     "bidderUsername": "demoBidder",
     "amount": 15000,
     "bidAt": "2026-09-23T13:40:00",
-    "isValid": true
+    "isValid": true,
+    "cancelledAt": null,
+    "cancelReason": null
   }
 ]
 ```
+
+취소된 입찰(이슈 #182)은 이력에 그대로 남고 `isValid`는 `false`, `cancelledAt`에 취소 시각, `cancelReason`에 `USER`(본인 취소)
+또는 `CREDIT_SHORTFALL`(최고 입찰 취소 시 크레딧 부족으로 시스템이 건너뜀)이 들어간다.
 
 `bidderUsername`은 화면에서 UUID 대신 입찰자 닉네임을 보여주기 위한 필드다.
 `productId`는 URL에 이미 있으므로 응답에 다시 넣지 않는다. 상품은 존재하는데 입찰이

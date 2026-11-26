@@ -24,10 +24,16 @@ public interface BidRepository extends JpaRepository<Bid, UUID> {
 
     // 낙찰 처리용: 유효한 입찰을 금액 높은 순으로 - 1순위 크레딧 부족하면 2순위로 넘어가며 시도
     // (Bid 엔티티의 실제 필드명이 valid라서 isValid가 아니라 Valid로 참조해야 한다 - getter만 isValid())
-    List<Bid> findByProductIdAndValidTrueOrderByAmountDesc(UUID productId);
+    // 취소된 입찰(cancelled_at)은 후보에서 빠진다 (이슈 #182).
+    List<Bid> findByProductIdAndValidTrueAndCancelledAtIsNullOrderByAmountDesc(UUID productId);
 
     // 경매 취소용: 유효한 입찰이 하나라도 있으면 판매자가 취소할 수 없다.
-    boolean existsByProductIdAndValidTrue(UUID productId);
+    boolean existsByProductIdAndValidTrueAndCancelledAtIsNull(UUID productId);
+
+    // 입찰 취소: 취소할 입찰이 속한 상품 id. 상품 락을 먼저 잡아야 해서(상품 -> 사용자 순서) 입찰 행을
+    // 읽기 전에 상품 id만 따로 알아낸다.
+    @Query("select b.product.id from Bid b where b.id = :bidId")
+    Optional<UUID> findProductIdById(@Param("bidId") UUID bidId);
 
     // 입찰 이력 조회용: 최근 입찰이 먼저 나오도록 정렬.
     // 응답(bidderUsername)을 만들 시점엔 세션이 이미 닫혀 있어서(open-in-view=false), bidder를

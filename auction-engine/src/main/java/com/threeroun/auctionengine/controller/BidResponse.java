@@ -26,7 +26,8 @@ public record BidResponse(
         @JsonProperty("isValid") boolean isValid,
         boolean extended,
         String reason,
-        Integer minNextBid
+        Integer minNextBid,
+        Long availableCredit
 ) {
     public static BidResponse from(BidResult result) {
         Bid bid = result.bid();
@@ -39,6 +40,7 @@ public record BidResponse(
                 bid.isValid(),
                 result.extended(),
                 result.reason(),
-                result.minNextBid());
+                result.minNextBid(),
+                result.availableCredit());
     }
 }
