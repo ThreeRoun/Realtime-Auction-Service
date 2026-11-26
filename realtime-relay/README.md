@@ -84,7 +84,18 @@
 }
 ```
 
-### 4. 로비 이벤트 (`scope=lobby` 접속 시)
+### 4. `auction_cancelled` (판매자가 경매를 취소했을 때)
+
+판매자는 유효 입찰이 없는 경매만 취소할 수 있습니다. 취소된 경매는 상태가 `CANCELLED`가 되고 더 이상 입찰할 수 없습니다.
+
+```json
+{
+  "event": "auction_cancelled",
+  "product_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+}
+```
+
+### 5. 로비 이벤트 (`scope=lobby` 접속 시)
 
 로비는 모든 상품의 이벤트를 받으며, 목록 화면에 필요한 필드만 전달합니다.
 `bidder_id`, `bid_at`, `winner_id`는 포함되지 않습니다.
@@ -94,6 +105,7 @@
 | `bid_placed` | `event`, `product_id`, `current_price` |
 | `auction_extended` | `event`, `product_id`, `new_end_at` |
 | `auction_closed` | `event`, `product_id`, `final_price` |
+| `auction_cancelled` | `event`, `product_id` |
 
 ```json
 {

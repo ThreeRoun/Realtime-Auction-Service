@@ -33,6 +33,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     // /{id}/image처럼 path variable이 끼는 경로는 Set으로 정확히 나열할 수 없어서 패턴으로 매칭한다.
     private static final Pattern PRODUCT_IMAGE_UPLOAD_PATH = Pattern.compile("^/api/products/[^/]+/image$");
 
+    // 경매 취소(POST /api/products/{id}/cancel)도 판매자 본인 확인이 필요하다 (이슈 #183).
+    private static final Pattern AUCTION_CANCEL_PATH = Pattern.compile("^/api/products/[^/]+/cancel$");
+
     // 사용자 조회(GET /api/users/{id})는 로그인한 사용자만 호출할 수 있다 (이슈 #149). 인증 없이 열려 있으면
     // 입찰 이력/상품 응답으로 알 수 있는 사용자 id만으로 누구든 타인의 이메일과 크레딧을 조회할 수 있었다.
     // 회원가입(POST /api/users)은 경로에 id가 없어서 이 패턴에 걸리지 않는다.
@@ -80,7 +83,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (!"POST".equalsIgnoreCase(request.getMethod())) {
             return false;
         }
-        return PROTECTED_POST_PATHS.contains(uri) || PRODUCT_IMAGE_UPLOAD_PATH.matcher(uri).matches();
+        return PROTECTED_POST_PATHS.contains(uri) || PRODUCT_IMAGE_UPLOAD_PATH.matcher(uri).matches()
+                || AUCTION_CANCEL_PATH.matcher(uri).matches();
     }
 
     private void writeUnauthorized(HttpServletResponse response, String message) throws IOException {

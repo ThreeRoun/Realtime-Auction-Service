@@ -50,7 +50,8 @@ function ProductList() {
           );
           break;
         case "auction_closed":
-          // 진행 중인 경매 목록이므로 마감된 상품은 목록에서 뺀다
+        case "auction_cancelled":
+          // 진행 중인 경매 목록이므로 마감되거나 취소된 상품은 목록에서 뺀다
           setProducts((prev) => prev.filter((p) => p.id !== data.product_id));
           break;
       }
