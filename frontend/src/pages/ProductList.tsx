@@ -12,12 +12,14 @@ type AuctionTab = "active" | "ended";
 
 function ProductList() {
   const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadedTab, setLoadedTab] = useState<AuctionTab | null>(null);
   const [error, setError] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
 
   const activeTab: AuctionTab =
-    searchParams.get("tab") === "ended" ? "ended" : "active";
+  searchParams.get("tab") === "ended" ? "ended" : "active";
+
+  const loading = loadedTab !== activeTab;
 
   const setActiveTab = (tab: AuctionTab) => {
     if (tab === activeTab) return;
@@ -35,50 +37,46 @@ function ProductList() {
   const [socketStatus, setSocketStatus] =
     useState<SocketStatus>("connecting");
 
-  const loadProducts = useCallback(async (signal?: AbortSignal) => {
+  const loadProducts = useCallback((signal?: AbortSignal) => {
     const url =
       activeTab === "active"
         ? "/api/products"
         : "/api/products?status=ended";
 
-    try {
-      const response = await fetch(url, { signal });
+    return fetch(url, { signal })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("상품 목록 조회 실패");
+        }
 
-      if (!response.ok) {
-        throw new Error("상품 목록 조회 실패");
-      }
+        const data: Product[] = await response.json();
 
-      const data: Product[] = await response.json();
-
-      if (!signal?.aborted) {
-        setProducts(data);
-        setError(false);
-      }
-    } catch (error) {
-      if (!signal?.aborted) {
-        console.error("상품 목록 조회 실패:", error);
-        setError(true);
-      }
-    }
+        if (!signal?.aborted) {
+          setProducts(data);
+          setError(false);
+        }
+      })
+      .catch((error) => {
+        if (!signal?.aborted) {
+          console.error("상품 목록 조회 실패:", error);
+          setError(true);
+        }
+      });
   }, [activeTab]);
 
   useEffect(() => {
     const controller = new AbortController();
 
-    setLoading(true);
-    setProducts([]);
-    setError(false);
-
     loadProducts(controller.signal).finally(() => {
       if (!controller.signal.aborted) {
-        setLoading(false);
+        setLoadedTab(activeTab);
       }
     });
 
     return () => {
       controller.abort();
     };
-  }, [loadProducts]);
+  }, [activeTab, loadProducts]);
 
   // 실시간 경매 이벤트를 현재 목록에 반영한다.
   useEffect(() => {

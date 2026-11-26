@@ -81,7 +81,7 @@ test("로그인 후 상품 목록을 조회할 수 있다", async ({ page }) => 
           bidUnit: 10000,
           sellerId: "seller-1",
           sellerUsername: "test-seller",
-          status: "ACTIVE",
+          status: "IN_PROGRESS",
           startAt: "2026-11-01T10:00:00Z",
           endAt: "2026-12-01T10:00:00Z",
           winnerId: null,
