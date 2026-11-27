@@ -6,6 +6,7 @@ import type { Product } from "../data/products";
 import { cancelAuction } from "../api/products";
 import {
   placeBid,
+  cancelBid,
   getBidHistory,
   type BidHistoryResponse,
 } from "../api/bids";
@@ -23,7 +24,23 @@ function ProductDetail() {
   const [product, setProduct] = useState<Product | null>(null);
   const [user, setUser] = useState<UserProfile | null>(null);
   const [bidHistory, setBidHistory] = useState<BidHistoryResponse[]>([]);
+  const bidHistoryRequestId = useRef(0);
+
+  const refreshBidHistory = useCallback(async (targetProductId: string) => {
+    const requestId = ++bidHistoryRequestId.current;
+
+    try {
+      const history = await getBidHistory(targetProductId);
+
+      if (requestId === bidHistoryRequestId.current) {
+        setBidHistory(history);
+      }
+    } catch (error) {
+      console.error("입찰 이력 동기화 실패:", error);
+    }
+  }, []);
   const [currentPrice, setCurrentPrice] = useState(0);
+  const currentPriceRevision = useRef(0);
   const [endAt, setEndAt] = useState("");
   const [isAuctionClosed, setIsAuctionClosed] = useState(false);
   const [winnerId, setWinnerId] = useState<string | null>(null);
@@ -36,6 +53,8 @@ function ProductDetail() {
   const [isCancelled, setIsCancelled] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [cancelMessage, setCancelMessage] = useState("");
+  const [cancellingBidId, setCancellingBidId] = useState<string | null>(null);
+  const [bidCancelMessage, setBidCancelMessage] = useState("");
     
   const profileRequestId = useRef(0);
   const profileRefreshTimer = useRef<number | null>(null);
@@ -133,22 +152,15 @@ function ProductDetail() {
       return;
     }
 
-    let cancelled = false;
-
-    getBidHistory(productId)
-      .then((history) => {
-        if (!cancelled) {
-          setBidHistory(history);
-        }
-      })
-      .catch((error) => {
-        console.error("입찰 내역 조회 실패:", error);
-      });
+    const timerId = window.setTimeout(() => {
+      void refreshBidHistory(productId);
+    }, 0);
 
     return () => {
-      cancelled = true;
+      window.clearTimeout(timerId);
+      bidHistoryRequestId.current += 1;
     };
-  }, [productId]);
+  }, [productId, refreshBidHistory]);
 
   useEffect(() => {
     if (!productId) {
@@ -158,18 +170,28 @@ function ProductDetail() {
     const connection = connectAuctionSocket(productId, {
       onEvent: (data) => {
         if (data.event === "bid_placed") {
+          currentPriceRevision.current += 1;
           setCurrentPrice(data.current_price);
           scheduleProfileRefresh();
           
-          getBidHistory(productId)
-            .then(setBidHistory)
-            .catch((error) => {
-              console.error("입찰 후 최고 입찰자 갱신 실패:", error);
-            });
+          void refreshBidHistory(productId);
         }
 
         if (data.event === "bid_cancelled") {
+          currentPriceRevision.current += 1;
+          setCurrentPrice(data.current_price);
+
+          setBidHistory((previousHistory) =>
+            previousHistory.map((bid) =>
+              data.cancelled_bid_ids.includes(bid.bidId)
+                ? { ...bid, isValid: false }
+                : bid
+            )
+          );
+
           scheduleProfileRefresh();
+
+          void refreshBidHistory(productId);
         }
 
         if (data.event === "auction_cancelled") {
@@ -199,17 +221,29 @@ function ProductDetail() {
         }
       },
       // 끊겨 있던 동안 놓친 입찰을 REST로 다시 불러와 현재가를 맞춘다
+            // 재연결 시 현재가, 입찰 이력, 사용 가능 크레딧을 동기화한다
       onReconnect: () => {
         scheduleProfileRefresh();
 
+        const requestedPriceRevision = ++currentPriceRevision.current;
+
         fetch(`/api/products/${productId}`)
-          .then((response) => response.json())
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error("상품 정보 조회 실패");
+            }
+            return response.json();
+          })
           .then((latest: Product) => {
-            setCurrentPrice(latest.currentPrice);
+            if (requestedPriceRevision === currentPriceRevision.current) {
+              setCurrentPrice(latest.currentPrice);
+            }
           })
           .catch((error) => {
             console.error("재연결 후 상품 정보 동기화 실패:", error);
           });
+
+          void refreshBidHistory(productId);
       },
       onStatusChange: setSocketStatus,
     });
@@ -217,7 +251,7 @@ function ProductDetail() {
     return () => {
       connection.close();
     };
-  }, [productId, scheduleProfileRefresh]);
+  }, [productId, scheduleProfileRefresh, refreshBidHistory]);
 
   useEffect(() => {
     if (!productId || !localStorage.getItem("accessToken")) {
@@ -303,6 +337,10 @@ function ProductDetail() {
   }
 
   const handleBid = async () => {
+    if (isBidding || isBiddingClosed || cancellingBidId !== null) {
+      return;
+    }
+
   const amount = Number(bidAmount);
 
   setBidMessage("");
@@ -324,15 +362,36 @@ function ProductDetail() {
   try {
     setIsBidding(true);
 
+        const accessToken = localStorage.getItem("accessToken");
+
     const result = await placeBid({
       productId: product.id,
       amount,
     });
 
+    const availableCredit = result.availableCredit;
+
+    if (
+      typeof availableCredit === "number" &&
+      accessToken &&
+      localStorage.getItem("accessToken") === accessToken
+    ) {
+      profileRequestId.current += 1;
+
+      setUser((previousUser) =>
+        previousUser
+          ? { ...previousUser, availableCredit }
+          : null
+      );
+    }
+
+    if (result.isValid || typeof availableCredit === "number") {
+      void refreshUserProfile();
+    }
+
     if (result.isValid) {
       setBidMessage(`${amount.toLocaleString()}원 입찰에 성공했습니다.`);
       setBidAmount("");
-      void refreshUserProfile();
     } else if (result.reason === "INSUFFICIENT_CREDIT") {
       // 금액은 충분하지만 사용 가능 크레딧(보유 - 다른 진행중 경매에 묶인 금액)을 넘는 입찰이다.
       // "더 높은 금액으로"라는 안내가 나가면 반대가 되므로 따로 안내한다.
@@ -361,6 +420,100 @@ function ProductDetail() {
   } finally {
     setIsBidding(false);
   }
+  };
+
+  const handleBidCancel = async (bid: BidHistoryResponse) => {
+    if (
+      !user ||
+      bid.bidderId !== user.id ||
+      !bid.isValid ||
+      isBiddingClosed ||
+      isBidding ||
+      cancellingBidId !== null ||
+      !["IN_PROGRESS", "EXTENDED"].includes(product.status)
+    ) {
+      return;
+    }
+
+    const confirmMessage =
+      highestBid?.bidId === bid.bidId
+        ? "최고 입찰을 취소하면 현재가가 내려갑니다. 입찰을 취소하시겠습니까?"
+        : "이 입찰을 취소하시겠습니까?";
+
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    setBidCancelMessage("");
+    setCancellingBidId(bid.bidId);
+
+    const requestedPriceRevision = currentPriceRevision.current;
+    const accessToken = localStorage.getItem("accessToken");
+
+    try {
+      const result = await cancelBid(bid.bidId);
+
+      if (requestedPriceRevision === currentPriceRevision.current) {
+        currentPriceRevision.current += 1;
+        setCurrentPrice(result.currentPrice);
+      } else {
+        const refreshRevision = ++currentPriceRevision.current;
+
+        void fetch(`/api/products/${product.id}`)
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error("상품 정보 조회 실패");
+            }
+
+            return response.json();
+          })
+          .then((latest: Product) => {
+            if (refreshRevision === currentPriceRevision.current) {
+              setCurrentPrice(latest.currentPrice);
+            }
+          })
+          .catch((error) => {
+            console.error("입찰 취소 후 현재가 동기화 실패:", error);
+          });
+      }
+
+      setBidHistory((previousHistory) =>
+        previousHistory.map((item) =>
+          result.cancelledBidIds.includes(item.bidId)
+            ? { ...item, isValid: false }
+            : item
+        )
+      );
+
+      if (
+        accessToken &&
+        localStorage.getItem("accessToken") === accessToken
+      ) {
+        profileRequestId.current += 1;
+
+        setUser((previousUser) =>
+          previousUser
+            ? { ...previousUser, availableCredit: result.availableCredit }
+            : null
+        );
+      }
+
+      setBidCancelMessage("입찰이 취소되었습니다.");
+
+      void refreshUserProfile();
+
+      void refreshBidHistory(product.id);
+    } catch (error) {
+      console.error("입찰 취소 실패:", error);
+
+      setBidCancelMessage(
+        error instanceof Error
+          ? error.message
+          : "입찰 취소 중 오류가 발생했습니다."
+      );
+    } finally {
+      setCancellingBidId(null);
+    }
   };
 
   // 판매자 본인이고, 아직 끝나지 않았고, 유효 입찰이 없을 때만 취소 버튼을 보여준다.
@@ -523,14 +676,14 @@ function ProductDetail() {
 
               setBidAmount(String(nextAmount));
             }}
-            disabled={isBidding || isBiddingClosed}
+            disabled={isBidding || isBiddingClosed || cancellingBidId !== null}
           >
             +{product.bidUnit.toLocaleString()}원
           </button>
           <button
             type="button"
             onClick={handleBid}
-            disabled={isBidding || isBiddingClosed}
+            disabled={isBidding || isBiddingClosed || cancellingBidId !== null}
           >
             {isCancelled
               ? "경매 취소"
@@ -559,6 +712,56 @@ function ProductDetail() {
               {cancelMessage}
             </p>
           )}
+          <section className="bid-history">
+            <h2>입찰 이력</h2>
+
+            {bidHistory.length === 0 ? (
+              <p>아직 입찰 이력이 없습니다.</p>
+            ) : (
+              <ul>
+                {bidHistory.map((bid) => (
+                  <li key={bid.bidId}>
+                    <strong>
+                      {bid.bidderUsername ?? bid.bidderId}
+                    </strong>
+
+                    {" · "}
+                    {bid.amount.toLocaleString()}원
+
+                    {" · "}
+                    {new Date(bid.bidAt).toLocaleString("ko-KR")}
+
+                    {" · "}
+                    {bid.isValid ? "유효 입찰" : "무효 입찰"}
+
+                    {bid.isValid && highestBid?.bidId === bid.bidId && (
+                      <strong> (최고 입찰)</strong>
+                    )}
+
+                    {user &&
+                      bid.bidderId === user.id &&
+                      bid.isValid &&
+                      !isBiddingClosed &&
+                      ["IN_PROGRESS", "EXTENDED"].includes(product.status) && (
+                        <button
+                          type="button"
+                          onClick={() => void handleBidCancel(bid)}
+                          disabled={cancellingBidId !== null || isBidding}
+                        >
+                          {cancellingBidId === bid.bidId
+                            ? "취소 처리 중..."
+                            : "입찰 취소"}
+                        </button>
+                      )}
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {bidCancelMessage && (
+              <p className="bid-message">{bidCancelMessage}</p>
+            )}
+          </section>
         </div>
       </div>
     </main>
