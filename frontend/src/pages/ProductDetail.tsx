@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { jwtDecode } from "jwt-decode";
 import { getUserProfile, type UserProfile } from "../api/auth";
@@ -11,6 +11,7 @@ import {
 } from "../api/bids";
 import {
   connectAuctionSocket,
+  connectLobbySocket,
   type SocketStatus,
 } from "../websocket/auctionSocket";
 
@@ -35,7 +36,12 @@ function ProductDetail() {
   const [isCancelled, setIsCancelled] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [cancelMessage, setCancelMessage] = useState("");
-  useEffect(() => {
+    
+  const profileRequestId = useRef(0);
+  const profileRefreshTimer = useRef<number | null>(null);
+
+  const refreshUserProfile = useCallback(async () => {
+    const requestId = ++profileRequestId.current;
     const accessToken = localStorage.getItem("accessToken");
 
     if (!accessToken) {
@@ -44,16 +50,53 @@ function ProductDetail() {
 
     try {
       const decoded = jwtDecode<{ sub: string }>(accessToken);
+      const latestUser = await getUserProfile(decoded.sub);
 
-      getUserProfile(decoded.sub)
-        .then(setUser)
-        .catch((error) => {
-          console.error("사용자 정보 조회 실패:", error);
-        });
+      if (
+        requestId === profileRequestId.current &&
+        localStorage.getItem("accessToken") === accessToken
+      ) {
+        setUser(latestUser);
+      }
     } catch (error) {
-      console.error("로그인 토큰 확인 실패:", error);
+      if (
+        requestId === profileRequestId.current &&
+        !localStorage.getItem("accessToken")
+      ) {
+        setUser(null);
+      }
+
+      console.error("사용자 정보 조회 실패:", error);
     }
   }, []);
+
+  const scheduleProfileRefresh = useCallback(() => {
+    if (profileRefreshTimer.current !== null) {
+      return;
+    }
+
+    profileRefreshTimer.current = window.setTimeout(() => {
+      profileRefreshTimer.current = null;
+      void refreshUserProfile();
+    }, 300);
+  }, [refreshUserProfile]);
+
+  useEffect(() => {
+    const timerId = window.setTimeout(() => {
+      void refreshUserProfile();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timerId);
+
+      if (profileRefreshTimer.current !== null) {
+        window.clearTimeout(profileRefreshTimer.current);
+        profileRefreshTimer.current = null;
+      }
+
+      profileRequestId.current += 1;
+    };
+  }, [refreshUserProfile]);
   useEffect(() => {
     fetch("/api/products?status=all")
     .then((response) => response.json())
@@ -116,12 +159,17 @@ function ProductDetail() {
       onEvent: (data) => {
         if (data.event === "bid_placed") {
           setCurrentPrice(data.current_price);
+          scheduleProfileRefresh();
           
           getBidHistory(productId)
             .then(setBidHistory)
             .catch((error) => {
               console.error("입찰 후 최고 입찰자 갱신 실패:", error);
             });
+        }
+
+        if (data.event === "bid_cancelled") {
+          scheduleProfileRefresh();
         }
 
         if (data.event === "auction_cancelled") {
@@ -136,6 +184,7 @@ function ProductDetail() {
           setIsAuctionClosed(true);
           setWinnerId(data.winner_id);
           setFinalPrice(data.final_price);
+          scheduleProfileRefresh();
 
           // 이벤트에는 낙찰자 ID만 있어서, 닉네임은 상품 정보를 다시 읽어서 채운다 (엔진 이슈 #148).
           // 실패하거나 닉네임이 아직 없으면 ID로 대신 보여준다.
@@ -151,6 +200,8 @@ function ProductDetail() {
       },
       // 끊겨 있던 동안 놓친 입찰을 REST로 다시 불러와 현재가를 맞춘다
       onReconnect: () => {
+        scheduleProfileRefresh();
+
         fetch(`/api/products/${productId}`)
           .then((response) => response.json())
           .then((latest: Product) => {
@@ -166,7 +217,34 @@ function ProductDetail() {
     return () => {
       connection.close();
     };
-  }, [productId]);
+  }, [productId, scheduleProfileRefresh]);
+
+  useEffect(() => {
+    if (!productId || !localStorage.getItem("accessToken")) {
+      return;
+    }
+
+    const connection = connectLobbySocket({
+      onEvent: (data) => {
+        if (
+          data.event === "bid_placed" ||
+          data.event === "bid_cancelled" ||
+          data.event === "auction_closed"
+        ) {
+          if (data.product_id !== productId) {
+            scheduleProfileRefresh();
+          }
+        }
+      },
+      onReconnect: () => {
+        scheduleProfileRefresh();
+      },
+    });
+
+    return () => {
+      connection.close();
+    };
+  }, [productId, scheduleProfileRefresh]);
 
   // 마감 시각이 지나면(엔진이 마감 처리하기 전이어도) 입찰을 막는다 (이슈 #153). 엔진도 마감 시각이 지난 입찰은
   // 409로 거절하지만, 화면에서 먼저 알려주는 것이다. isAuctionClosed처럼 한번 켜지면 안 꺼지는 값이 아니라
@@ -254,6 +332,7 @@ function ProductDetail() {
     if (result.isValid) {
       setBidMessage(`${amount.toLocaleString()}원 입찰에 성공했습니다.`);
       setBidAmount("");
+      void refreshUserProfile();
     } else if (result.reason === "INSUFFICIENT_CREDIT") {
       // 금액은 충분하지만 사용 가능 크레딧(보유 - 다른 진행중 경매에 묶인 금액)을 넘는 입찰이다.
       // "더 높은 금액으로"라는 안내가 나가면 반대가 되므로 따로 안내한다.
