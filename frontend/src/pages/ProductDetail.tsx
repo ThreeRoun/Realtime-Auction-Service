@@ -657,42 +657,42 @@ function ProductDetail() {
                 : "정보를 불러올 수 없습니다."}
             </p>
           )}
-          <input
-            type="number"
-            value={bidAmount}
-            onChange={(e) => setBidAmount(e.target.value)}
-            placeholder="입찰 금액을 입력하세요"
-          />
-          <button
-            type="button"
-            onClick={() => {
-              const minimumBid = currentPrice + product.bidUnit;
-              const currentAmount = Number(bidAmount);
+          {!isBiddingClosed && (
+            <>
+              <input
+                type="number"
+                value={bidAmount}
+                onChange={(e) => setBidAmount(e.target.value)}
+                placeholder="입찰 금액을 입력하세요"
+              />
 
-              const nextAmount =
-                currentAmount < minimumBid
-                  ? minimumBid
-                  : currentAmount + product.bidUnit;
+              <button
+                type="button"
+                onClick={() => {
+                  const minimumBid = currentPrice + product.bidUnit;
+                  const currentAmount = Number(bidAmount);
 
-              setBidAmount(String(nextAmount));
-            }}
-            disabled={isBidding || isBiddingClosed || cancellingBidId !== null}
-          >
-            +{product.bidUnit.toLocaleString()}원
-          </button>
-          <button
-            type="button"
-            onClick={handleBid}
-            disabled={isBidding || isBiddingClosed || cancellingBidId !== null}
-          >
-            {isCancelled
-              ? "경매 취소"
-              : isBiddingClosed
-              ? "경매 종료"
-              : isBidding
-                ? "입찰 처리 중..."
-                : "입찰하기"}
-          </button>
+                  const nextAmount =
+                    currentAmount < minimumBid
+                      ? minimumBid
+                      : currentAmount + product.bidUnit;
+
+                  setBidAmount(String(nextAmount));
+                }}
+                disabled={isBidding || isBiddingClosed || cancellingBidId !== null}
+              >
+                +{product.bidUnit.toLocaleString()}원
+              </button>
+
+              <button
+                type="button"
+                onClick={handleBid}
+                disabled={isBidding || isBiddingClosed || cancellingBidId !== null}
+              >
+                {isBidding ? "입찰 처리 중..." : "입찰하기"}
+              </button>
+            </>
+          )}
           {bidMessage && (
             <p className="bid-message">
               {bidMessage}

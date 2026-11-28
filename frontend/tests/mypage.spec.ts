@@ -1,4 +1,6 @@
+/// <reference types="node" />
 import { test, expect } from "@playwright/test";
+import { Buffer } from "node:buffer";
 
 // 이슈 #149 - 사용자 조회 API(GET /api/users/{id})가 로그인한 사용자만 호출할 수 있게 바뀌었다.
 // 마이페이지가 본인 정보를 조회할 때 토큰을 보내는지 확인한다. 안 보내면 엔진이 401을 주고 마이페이지가 깨진다.
@@ -148,4 +150,165 @@ test("내가 등록한 경매와 낙찰받은 경매를 카드로 보여주고 �
   await expect(wonCard.getByText("상태: 낙찰")).toBeVisible();
   // 끝난 경매에는 남은 시간을 보여주지 않는다
   await expect(wonCard.getByText("남은 시간:")).toHaveCount(0);
+});
+
+// 이슈 #188 - 참여 경매 목록 통합 및 상태별 탭 분류
+test("참여 경매를 진행 중과 종료 탭으로 분류하고 개수를 표시한다", async ({ page }) => {
+  const product = (id: string, title: string, status: string) => ({
+    id,
+    title,
+    status,
+    description: "테스트 상품",
+    startingPrice: 10000,
+    currentPrice: 20000,
+    bidUnit: 1000,
+    sellerId: "user-2",
+    sellerUsername: "seller",
+    startAt: "2026-11-01T10:00:00",
+    endAt: ["IN_PROGRESS", "EXTENDED"].includes(status)
+      ? "2099-01-01T00:00:00"
+      : "2026-11-02T10:00:00",
+    winnerId: null,
+    imageUrl: null,
+    createdAt: "2026-11-01T10:00:00",
+  });
+
+  await page.route("**/api/users/user-1", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "user-1",
+        username: "alice",
+        email: "alice@test.com",
+        credit: 500000,
+        availableCredit: 480000,
+        createdAt: "2026-11-01T10:00:00",
+      }),
+    });
+  });
+
+  await page.route(/\/api\/products\?biddedByUserId=/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        product("p-1", "진행 중 상품", "IN_PROGRESS"),
+        product("p-2", "마감 연장 상품", "EXTENDED"),
+        product("p-3", "낙찰 상품", "SOLD"),
+        product("p-4", "유찰 상품", "UNSOLD"),
+        product("p-5", "완료 상품", "COMPLETED"),
+        product("p-6", "취소 상품", "CANCELLED"),
+      ]),
+    });
+  });
+
+  await page.goto("http://localhost:5173/mypage");
+
+  const participated = page.locator("section", {
+    has: page.getByRole("heading", {
+      name: "참여 중인 경매",
+      exact: true,
+    }),
+  });
+
+  const activeTab = participated.getByRole("button", {
+    name: "진행 중 (2)",
+    exact: true,
+  });
+
+  const endedTab = participated.getByRole("button", {
+    name: "종료 (4)",
+    exact: true,
+  });
+
+  // 기본 탭은 진행 중이다.
+  await expect(activeTab).toHaveAttribute("aria-pressed", "true");
+  await expect(endedTab).toHaveAttribute("aria-pressed", "false");
+  await expect(participated.locator(".auction-card")).toHaveCount(2);
+
+  await expect(participated.getByText("진행 중 상품", { exact: true })).toBeVisible();
+  await expect(participated.getByText("마감 연장 상품", { exact: true })).toBeVisible();
+  await expect(participated.getByText("낙찰 상품", { exact: true })).toHaveCount(0);
+
+  // 종료 탭에서는 종료 상태 4종을 모두 표시한다.
+  await endedTab.click();
+
+  await expect(endedTab).toHaveAttribute("aria-pressed", "true");
+  await expect(activeTab).toHaveAttribute("aria-pressed", "false");
+  await expect(participated.locator(".auction-card")).toHaveCount(4);
+
+  for (const title of ["낙찰 상품", "유찰 상품", "완료 상품", "취소 상품"]) {
+    await expect(participated.getByText(title, { exact: true })).toBeVisible();
+  }
+
+  await expect(participated.getByText("마감 연장 상품", { exact: true })).toHaveCount(0);
+
+  // 진행 중 탭으로 다시 전환할 수 있다.
+  await activeTab.click();
+
+  await expect(activeTab).toHaveAttribute("aria-pressed", "true");
+  await expect(participated.locator(".auction-card")).toHaveCount(2);
+
+  // 기존 종료된 경매 섹션은 제거되었다.
+  await expect(
+    page.getByRole("heading", { name: "종료된 경매", exact: true })
+  ).toHaveCount(0);
+});
+
+// 이슈 #188 - 탭별 빈 경매 목록 안내
+test("참여한 경매가 없으면 각 탭에 빈 목록 안내를 표시한다", async ({ page }) => {
+  await page.route("**/api/users/user-1", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "user-1",
+        username: "alice",
+        email: "alice@test.com",
+        credit: 500000,
+        availableCredit: 500000,
+        createdAt: "2026-11-01T10:00:00",
+      }),
+    });
+  });
+
+  await page.goto("http://localhost:5173/mypage");
+
+  const participated = page.locator("section", {
+    has: page.getByRole("heading", {
+      name: "참여 중인 경매",
+      exact: true,
+    }),
+  });
+
+  const activeTab = participated.getByRole("button", {
+    name: "진행 중 (0)",
+    exact: true,
+  });
+
+  const endedTab = participated.getByRole("button", {
+    name: "종료 (0)",
+    exact: true,
+  });
+
+  await expect(activeTab).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    participated.getByText("현재 참여 중인 경매가 없습니다.")
+  ).toBeVisible();
+
+  await endedTab.click();
+
+  await expect(endedTab).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    participated.getByText("종료된 경매가 없습니다.")
+  ).toBeVisible();
+
+  await expect(participated.locator(".auction-card")).toHaveCount(0);
+
+  await activeTab.click();
+
+  await expect(
+    participated.getByText("현재 참여 중인 경매가 없습니다.")
+  ).toBeVisible();
 });

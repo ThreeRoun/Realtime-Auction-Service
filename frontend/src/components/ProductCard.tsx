@@ -1,12 +1,15 @@
 import { Link } from "react-router-dom";
 import type { Product } from "../data/products";
 import AuctionCountdown from "./AuctionCountdown";
+import { LIVE_STATUSES, getStatusLabel } from "../data/productStatus";
 
 interface ProductCardProps {
   product: Product;
 }
 
 function ProductCard({ product }: ProductCardProps) {
+  const isLive = LIVE_STATUSES.includes(product.status);
+
   return (
     <div className="product-card">
       <div className="product-image">
@@ -29,8 +32,17 @@ function ProductCard({ product }: ProductCardProps) {
         <h3>{product.title}</h3>
         <p>{product.description}</p>
 
+        <div className="product-status">
+          <span
+            className={`auction-status-badge status-${product.status.toLowerCase()}`}
+          >
+            {getStatusLabel(product.status)}
+          </span>
+        </div>
+
         <div className="product-price">
-          현재가: {product.currentPrice.toLocaleString()}원
+          {isLive ? "현재가" : "종료 시 가격"}:{" "}
+          {product.currentPrice.toLocaleString()}원
         </div>
 
         <div className="product-end-time">
@@ -38,10 +50,10 @@ function ProductCard({ product }: ProductCardProps) {
           <div>마감: {product.endAt}</div>
         </div>
 
-        <AuctionCountdown endAt={product.endAt} />
+        {isLive && <AuctionCountdown endAt={product.endAt} />}
 
         <Link to={`/products/${product.id}`} className="detail-button">
-          경매 참여
+          {isLive ? "경매 참여" : "상세 보기"}
         </Link>
       </div>
     </div>
