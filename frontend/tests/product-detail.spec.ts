@@ -14,7 +14,7 @@ test("상품 목록에서 경매 참여를 클릭하면 상세 페이지로 이�
     bidUnit: 10000,
     sellerId: "seller-1",
     sellerUsername: "test-seller",
-    status: "ACTIVE",
+    status: "IN_PROGRESS",
     startAt: "2026-11-01T10:00:00Z",
     endAt: FAR_FUTURE_END_AT,
     winnerId: null,
@@ -62,7 +62,7 @@ test("입찰 요청이 성공하면 성공 메시지가 표시된다", async ({ 
     bidUnit: 10000,
     sellerId: "seller-1",
     sellerUsername: "test-seller",
-    status: "ACTIVE",
+    status: "IN_PROGRESS",
     startAt: "2026-11-01T10:00:00Z",
     endAt: FAR_FUTURE_END_AT,
     winnerId: null,
@@ -143,7 +143,7 @@ test("WebSocket 입찰 이벤트가 발생하면 상세 페이지 현재가가 �
     bidUnit: 10000,
     sellerId: "seller-1",
     sellerUsername: "test-seller",
-    status: "ACTIVE",
+    status: "IN_PROGRESS",
     startAt: "2026-11-01T10:00:00Z",
     endAt: FAR_FUTURE_END_AT,
     winnerId: null,
@@ -211,7 +211,7 @@ test("경매 종료 이벤트 후 낙찰 결과가 표시되고 추가 입찰이
     bidUnit: 10000,
     sellerId: "seller-1",
     sellerUsername: "test-seller",
-    status: "ACTIVE",
+    status: "IN_PROGRESS",
     startAt: "2026-11-01T10:00:00Z",
     endAt: FAR_FUTURE_END_AT,
     winnerId: null,
@@ -270,12 +270,20 @@ test("경매 종료 이벤트 후 낙찰 결과가 표시되고 추가 입찰이
   await expect(page.getByText("최종 낙찰가: 150,000원")).toBeVisible();
 
   await expect(
+    page.getByPlaceholder("입찰 금액을 입력하세요")
+  ).toHaveCount(0);
+
+  await expect(
+    page.getByRole("button", { name: "입찰하기" })
+  ).toHaveCount(0);
+
+  await expect(
     page.getByRole("button", { name: "경매 종료" })
-  ).toBeDisabled();
+  ).toHaveCount(0);
 
   await expect(
     page.getByRole("button", { name: "+10,000원" })
-  ).toBeDisabled();
+  ).toHaveCount(0);
 });
 
 // 이슈 #150 - 입찰이 실패했을 때 "입찰 요청에 실패했습니다." 하나로 뭉뚱그리지 않고 엔진이 내려주는 사유(code)별로 안내한다.
@@ -289,7 +297,7 @@ const bidTestProduct = {
   bidUnit: 10000,
   sellerId: "seller-1",
   sellerUsername: "test-seller",
-  status: "ACTIVE",
+  status: "IN_PROGRESS",
   startAt: "2026-11-01T10:00:00Z",
   endAt: FAR_FUTURE_END_AT,
   winnerId: null,
@@ -592,7 +600,7 @@ async function mockClosedProductPage(
   });
 }
 
-test("이미 낙찰된 상품을 열면 낙찰 결과가 보이고 입찰 버튼이 비활성화된다", async ({ page }) => {
+test("이미 낙찰된 상품을 열면 낙찰 결과가 보이고 입찰 UI가 표시되지 않는다", async ({ page }) => {
   await mockClosedProductPage(
     page,
     {
@@ -620,11 +628,13 @@ test("이미 낙찰된 상품을 열면 낙찰 결과가 보이고 입찰 버튼
   await expect(page.getByRole("heading", { name: "경매 종료" })).toBeVisible();
   await expect(page.getByText("낙찰자: alice")).toBeVisible();
   await expect(page.getByText("최종 낙찰가: 150,000원")).toBeVisible();
-  await expect(page.getByRole("button", { name: "경매 종료" })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "+10,000원" })).toBeDisabled();
+  await expect(page.getByPlaceholder("입찰 금액을 입력하세요")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "입찰하기" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "경매 종료" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "+10,000원" })).toHaveCount(0);
 });
 
-test("유찰된 상품을 열면 유찰 안내가 보이고 입찰 버튼이 비활성화된다", async ({ page }) => {
+test("유찰된 상품을 열면 유찰 안내가 보이고 입찰 UI가 표시되지 않는다", async ({ page }) => {
   await mockClosedProductPage(page, {
     ...bidTestProduct,
     status: "UNSOLD",
@@ -635,7 +645,10 @@ test("유찰된 상품을 열면 유찰 안내가 보이고 입찰 버튼이 비
   await page.goto("http://localhost:5173/products/test-product-1");
 
   await expect(page.getByText("낙찰자가 없어 유찰되었습니다.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "경매 종료" })).toBeDisabled();
+  await expect(page.getByPlaceholder("입찰 금액을 입력하세요")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "입찰하기" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "경매 종료" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "+10,000원" })).toHaveCount(0);
 });
 
 // 마감 처리는 상품의 현재가를 낙찰가로 바꾸지 않는다. 크레딧 부족으로 차순위가 낙찰되면 현재가(150,000원)와
@@ -677,7 +690,7 @@ test("차순위가 낙찰된 상품은 현재가가 아니라 낙찰자의 입�
   await expect(page.getByText("최종 낙찰가: 140,000원")).toBeVisible();
 });
 
-test("마감 시각이 지났지만 아직 마감 처리 전인 상품은 입찰 버튼이 비활성화되고 집계 안내가 보인다", async ({ page }) => {
+test("마감 시각이 지났지만 아직 마감 처리 전인 상품은 입찰 UI가 숨겨지고 집계 안내가 보인다", async ({ page }) => {
   await mockClosedProductPage(page, {
     ...bidTestProduct,
     status: "IN_PROGRESS",
@@ -689,7 +702,10 @@ test("마감 시각이 지났지만 아직 마감 처리 전인 상품은 입찰
   await expect(
     page.getByText("경매가 마감되었습니다. 낙찰 결과를 집계하는 중입니다.")
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "경매 종료" })).toBeDisabled();
+  await expect(page.getByPlaceholder("입찰 금액을 입력하세요")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "입찰하기" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "경매 종료" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "+10,000원" })).toHaveCount(0);
 });
 
 // 마감 판단을 "한번 켜지면 안 꺼지는 값"이 아니라 현재 시각과 endAt에서 매번 계산하는 이유:
@@ -720,9 +736,11 @@ test("마감 시각이 지나 입찰이 막혀도 마감이 연장되면 다시 
 
   // 마감이 곧 지나는 시각으로 바뀌면 시간이 지난 뒤 입찰이 막힌다
   sendEndAt!(new Date(Date.now() + 1500).toISOString());
-  await expect(page.getByRole("button", { name: "경매 종료" })).toBeDisabled({
-    timeout: 8000,
+  await expect(page.getByRole("button", { name: "입찰하기" })).toHaveCount(0, {
+  timeout: 8000,
   });
+  await expect(page.getByPlaceholder("입찰 금액을 입력하세요")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "+10,000원" })).toHaveCount(0);
 
   // 안티 스나이핑 연장 이벤트가 오면 다시 입찰할 수 있다
   sendEndAt!(FAR_FUTURE_END_AT);

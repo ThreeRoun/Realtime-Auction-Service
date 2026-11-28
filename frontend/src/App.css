@@ -350,3 +350,87 @@
 .product-detail-info button:first-of-type:hover:not(:disabled) {
   background: #dfe1e5;
 }
+
+
+/* 상품 목록 - 진행 중 / 종료 탭 */
+.auction-tabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.auction-tab {
+  padding: 10px 24px;
+  border: 1px solid #d5d7db;
+  border-radius: 8px;
+  background: #fff;
+  color: #666;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.auction-tab:hover {
+  background: #f0f0f0;
+}
+
+.auction-tab.active {
+  background: #222;
+  border-color: #222;
+  color: #fff;
+}
+
+/* 상품 카드 - 경매 상태 */
+.product-status {
+  margin-bottom: 10px;
+  color: #666;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* 경매 상태 배지 */
+.auction-status-badge {
+  display: inline-block;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+/* 진행 중 */
+.auction-status-badge.status-in_progress {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+/* 마감 연장 */
+.auction-status-badge.status-extended {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+/* 낙찰 */
+.auction-status-badge.status-sold {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+/* 유찰 */
+.auction-status-badge.status-unsold {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+/* 완료 */
+.auction-status-badge.status-completed {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+/* 경매 취소 */
+.auction-status-badge.status-cancelled {
+  background: #fee2e2;
+  color: #b91c1c;
+}
