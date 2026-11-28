@@ -4,6 +4,8 @@ import { getUserProfile, type UserProfile } from "../api/auth";
 import { getMyProducts } from "../api/products";
 import type { Product } from "../data/products";
 import MyAuctionCard from "../components/MyAuctionCard";
+import AuctionTabs, { type AuctionTab } from "../components/AuctionTabs";
+import { LIVE_STATUSES } from "../data/productStatus";
 
 interface JwtPayload {
   sub: string;
@@ -11,6 +13,7 @@ interface JwtPayload {
 
 function MyPage() {
   const [now, setNow] = useState(() => Date.now());
+  const [activeTab, setActiveTab] = useState<AuctionTab>("active");
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -72,13 +75,16 @@ function MyPage() {
   }, []);
 
   const activeAuctions = participatedAuctions.filter(
-    (product) => product.status === "IN_PROGRESS"
+    (product) => LIVE_STATUSES.includes(product.status)
   );
 
   const endedAuctions = participatedAuctions.filter(
     (product) =>
-      ["SOLD", "UNSOLD", "COMPLETED"].includes(product.status)
+      ["SOLD", "UNSOLD", "COMPLETED", "CANCELLED"].includes(product.status)
   );
+
+  const displayedAuctions =
+    activeTab === "active" ? activeAuctions : endedAuctions;
 
   return (
     <main className="page-container">
@@ -118,33 +124,26 @@ function MyPage() {
       <section className="mypage-auctions">
         <h2>참여 중인 경매</h2>
 
-        {auctionsLoading ? (
-          <p>경매 목록을 불러오는 중입니다.</p>
-        ) : auctionsError ? (
-          <p role="alert">{auctionsError}</p>
-        ) : activeAuctions.length === 0 ? (
-          <div className="mypage-empty">현재 참여 중인 경매가 없습니다.</div>
-        ) : (
-          <ul>
-            {activeAuctions.map((product) => (
-              <MyAuctionCard key={product.id} product={product} now={now} />
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="mypage-auctions">
-        <h2>종료된 경매</h2>
+        <AuctionTabs
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          activeCount={activeAuctions.length}
+          endedCount={endedAuctions.length}
+        />
 
         {auctionsLoading ? (
           <p>경매 목록을 불러오는 중입니다.</p>
         ) : auctionsError ? (
           <p role="alert">{auctionsError}</p>
-        ) : endedAuctions.length === 0 ? (
-          <div className="mypage-empty">종료된 경매가 없습니다.</div>
+        ) : displayedAuctions.length === 0 ? (
+          <div className="mypage-empty">
+            {activeTab === "active"
+              ? "현재 참여 중인 경매가 없습니다."
+              : "종료된 경매가 없습니다."}
+          </div>
         ) : (
           <ul>
-            {endedAuctions.map((product) => (
+            {displayedAuctions.map((product) => (
               <MyAuctionCard key={product.id} product={product} now={now} />
             ))}
           </ul>

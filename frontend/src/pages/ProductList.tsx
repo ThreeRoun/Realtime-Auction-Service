@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import ProductCard from "../components/ProductCard";
+import AuctionTabs, { type AuctionTab } from "../components/AuctionTabs";
 import type { Product } from "../data/products";
 import {
   connectLobbySocket,
   type LobbyEvent,
   type SocketStatus,
 } from "../websocket/auctionSocket";
-
-type AuctionTab = "active" | "ended";
 
 function ProductList() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -149,25 +148,10 @@ function ProductList() {
         )}
       </section>
 
-      <div className="auction-tabs">
-        <button
-          type="button"
-          className={`auction-tab ${activeTab === "active" ? "active" : ""}`}
-          aria-pressed={activeTab === "active"}
-          onClick={() => setActiveTab("active")}
-        >
-          진행 중
-        </button>
-
-        <button
-          type="button"
-          className={`auction-tab ${activeTab === "ended" ? "active" : ""}`}
-          aria-pressed={activeTab === "ended"}
-          onClick={() => setActiveTab("ended")}
-        >
-          종료
-        </button>
-      </div>
+      <AuctionTabs
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+      />
 
       {loading ? (
         <p>상품 목록을 불러오는 중입니다...</p>
