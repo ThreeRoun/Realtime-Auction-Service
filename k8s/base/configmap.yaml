@@ -11,8 +11,8 @@ data:
   IMAGE_STORAGE_TYPE: s3
   S3_ENDPOINT: http://auction-s3:8333
   S3_BUCKET: product-images
-  # 컨테이너 메모리 limit 기준으로 힙 크기를 잡는다 (JVM 기본값 25%는 너무 작음)
-  JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75
+  # -javaagent: OpenTelemetry Java 에이전트를 켜서 트레이스를 Alloy로 보낸다 (아래 OTEL_* 설정 사용)
+  JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75 -javaagent:/app/opentelemetry-javaagent.jar
   # application-prod.properties를 활성화한다 - jwt.secret/DB 계정에 기본값이 없어서,
   # auction-secret(Secret)의 JWT_SECRET/POSTGRES_USER/POSTGRES_PASSWORD가 빠지면
   # (이슈 #102) 조용히 기본값을 쓰는 대신 기동 자체가 실패한다.
