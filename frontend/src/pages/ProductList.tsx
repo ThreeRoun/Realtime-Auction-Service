@@ -84,6 +84,7 @@ function ProductList() {
     const handleEvent = (data: LobbyEvent) => {
       switch (data.event) {
         case "bid_placed":
+        case "bid_cancelled":
           if (activeTab === "active") {
             setProducts((prev) =>
               prev.map((p) =>

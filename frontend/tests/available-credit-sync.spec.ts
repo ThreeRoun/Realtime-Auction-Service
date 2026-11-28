@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page, type WebSocketRoute } from "@playwright/test";
 
 const PRODUCT_ID = "test-product-1";
 const USER_ID = "test-user-1";
@@ -188,10 +188,18 @@ test("다른 경매에서 추월당하면 현재 상세 페이지의 사용 가�
 
   await page.routeWebSocket(/productId=test-product-1/, () => {});
 
-  let sendLobbyBidEvent: (() => void) | undefined;
+  const lobbySockets = new Set<WebSocketRoute>();
 
   await page.routeWebSocket(/scope=lobby/, (ws) => {
-    sendLobbyBidEvent = () => {
+    lobbySockets.add(ws);
+
+    ws.onClose(() => {
+      lobbySockets.delete(ws);
+    });
+  });
+
+  const sendLobbyBidEvent = () => {
+    for (const ws of lobbySockets) {
       ws.send(
         JSON.stringify({
           event: "bid_placed",
@@ -199,16 +207,16 @@ test("다른 경매에서 추월당하면 현재 상세 페이지의 사용 가�
           current_price: 210000,
         })
       );
-    };
-  });
+    }
+  };
 
   await page.goto(`http://localhost:5173/products/${PRODUCT_ID}`);
 
   await expect(page.getByText(/300,000원/)).toBeVisible();
-  await expect.poll(() => Boolean(sendLobbyBidEvent)).toBe(true);
+  await expect.poll(() => lobbySockets.size).toBeGreaterThanOrEqual(2);
 
   credit.setAvailableCredit(500000);
-  sendLobbyBidEvent!();
+  sendLobbyBidEvent();
 
   await expect(page.getByText(/500,000원/)).toBeVisible();
   await expect(page.getByText("현재가: 120,000원")).toBeVisible();
