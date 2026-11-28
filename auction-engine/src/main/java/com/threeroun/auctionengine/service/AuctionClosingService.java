@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.TreeSet;
 import java.util.UUID;
 
 @Service
@@ -67,23 +68,24 @@ public class AuctionClosingService {
         // 동시에 같은 credit 값을 읽어 lost update가 나는 것을 막기 위함이다.
         //
         // 낙찰되면 같은 트랜잭션에서 판매자에게 낙찰가를 지급한다(수수료 없음). 차감과 지급이 한
-        // 트랜잭션이라 "돈만 사라지거나 돈만 생기는" 일이 없다. 판매자 row도 잠가야 하는데, 낙찰자와
-        // 판매자를 아무 순서로나 잠그면 두 마감 처리가 서로의 판매자/낙찰자를 반대 순서로 잠가
-        // 데드락이 날 수 있다(A의 낙찰자=B의 판매자, A의 판매자=B의 낙찰자). 그래서 항상 id가 작은
-        // 쪽부터 잠근다.
+        // 트랜잭션이라 "돈만 사라지거나 돈만 생기는" 일이 없다. 판매자 row도 잠가야 한다.
+        //
+        // 여러 사용자 row를 잠글 때는 항상 id 순서로 전부 먼저 잠근다. 아무 순서로나 잠그면 서로의
+        // 낙찰자/판매자를 반대 순서로 잠그는 두 마감 처리, 또는 마감 처리와 입찰 취소(BidCancelService가
+        // 후보 입찰자들을 잠근다)가 서로를 기다리는 데드락이 날 수 있다.
         UUID sellerId = product.getSeller().getId();
-        List<Bid> candidates = bidRepository.findByProductIdAndValidTrueOrderByAmountDesc(productId);
+        List<Bid> candidates = bidRepository.findByProductIdAndValidTrueAndCancelledAtIsNullOrderByAmountDesc(productId);
+        TreeSet<UUID> userIds = new TreeSet<>();
+        userIds.add(sellerId);
+        for (Bid candidate : candidates) {
+            userIds.add(candidate.getBidder().getId());
+        }
+        for (UUID userId : userIds) {
+            lockUser(userId);
+        }
         for (Bid bid : candidates) {
-            UUID bidderId = bid.getBidder().getId();
-            User bidder;
-            User seller;
-            if (bidderId.compareTo(sellerId) < 0) {
-                bidder = lockUser(bidderId);
-                seller = lockUser(sellerId);
-            } else {
-                seller = lockUser(sellerId);
-                bidder = lockUser(bidderId);
-            }
+            User bidder = lockUser(bid.getBidder().getId());
+            User seller = lockUser(sellerId);
             if (bidder.getCredit() >= bid.getAmount()) {
                 bidder.deductCredit(bid.getAmount());
                 seller.addCredit(bid.getAmount());

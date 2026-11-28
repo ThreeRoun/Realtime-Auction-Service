@@ -52,7 +52,7 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
     @Query("select coalesce(sum(p.currentPrice), 0) from Product p "
             + "where p.status in :statuses "
             + "and exists (select 1 from Bid b where b.product = p and b.bidder.id = :userId "
-            + "and b.valid = true and b.amount = p.currentPrice)")
+            + "and b.valid = true and b.cancelledAt is null and b.amount = p.currentPrice)")
     long sumLockedCredit(@Param("userId") UUID userId, @Param("statuses") Collection<ProductStatus> statuses);
 
     // 위와 같지만 특정 상품은 뺀다. 그 상품에 입찰하는 중이면, 거기 묶인 내 돈은 새 입찰가로
@@ -60,7 +60,7 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
     @Query("select coalesce(sum(p.currentPrice), 0) from Product p "
             + "where p.status in :statuses and p.id <> :excludedProductId "
             + "and exists (select 1 from Bid b where b.product = p and b.bidder.id = :userId "
-            + "and b.valid = true and b.amount = p.currentPrice)")
+            + "and b.valid = true and b.cancelledAt is null and b.amount = p.currentPrice)")
     long sumLockedCreditExcluding(@Param("userId") UUID userId, @Param("excludedProductId") UUID excludedProductId,
                                   @Param("statuses") Collection<ProductStatus> statuses);
 

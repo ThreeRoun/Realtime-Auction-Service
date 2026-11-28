@@ -40,6 +40,14 @@ public class Bid {
     @Column(name = "is_valid", nullable = false)
     private boolean valid = false;
 
+    // 입찰 취소(이슈 #182). is_valid는 "그 입찰이 들어온 순간 최고가를 갱신했는가"라는 기록이라 그대로 두고,
+    // 취소 여부는 따로 남긴다. 지금 효력이 있는 입찰은 isActive()다.
+    @Column(name = "cancelled_at")
+    private LocalDateTime cancelledAt;
+
+    @Column(name = "cancel_reason", length = 30)
+    private String cancelReason;
+
     protected Bid() {
     }
 
@@ -75,5 +83,28 @@ public class Bid {
 
     public void markValid() {
         this.valid = true;
+    }
+
+    public LocalDateTime getCancelledAt() {
+        return cancelledAt;
+    }
+
+    public String getCancelReason() {
+        return cancelReason;
+    }
+
+    public boolean isCancelled() {
+        return cancelledAt != null;
+    }
+
+    // 지금도 효력이 있는 입찰: 최고가를 갱신했고(valid) 취소되지 않았다.
+    // 크레딧 묶기, 낙찰 후보, 최고 입찰자 판정은 모두 이 기준을 쓴다.
+    public boolean isActive() {
+        return valid && cancelledAt == null;
+    }
+
+    public void cancel(String reason, LocalDateTime at) {
+        this.cancelledAt = at;
+        this.cancelReason = reason;
     }
 }

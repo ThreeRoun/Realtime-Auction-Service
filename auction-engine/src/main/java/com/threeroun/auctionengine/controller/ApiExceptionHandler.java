@@ -3,7 +3,10 @@ package com.threeroun.auctionengine.controller;
 import com.threeroun.auctionengine.service.AuctionCancelNotAllowedException;
 import com.threeroun.auctionengine.service.AuctionNotCancellableException;
 import com.threeroun.auctionengine.service.AuctionNotInProgressException;
+import com.threeroun.auctionengine.service.BidCancelNotAllowedException;
 import com.threeroun.auctionengine.service.BidCooldownException;
+import com.threeroun.auctionengine.service.BidNotCancellableException;
+import com.threeroun.auctionengine.service.BidNotFoundException;
 import com.threeroun.auctionengine.service.DuplicateUserException;
 import com.threeroun.auctionengine.service.InvalidCredentialsException;
 import com.threeroun.auctionengine.service.ProductImageUploadNotAllowedException;
@@ -80,6 +83,24 @@ public class ApiExceptionHandler {
     @ResponseStatus(HttpStatus.CONFLICT)
     public ErrorResponse handleAuctionNotCancellable(AuctionNotCancellableException e) {
         return new ErrorResponse(e.getCode(), e.getMessage());
+    }
+
+    @ExceptionHandler(BidNotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ErrorResponse handleBidNotFound(BidNotFoundException e) {
+        return new ErrorResponse("BID_NOT_FOUND", e.getMessage());
+    }
+
+    @ExceptionHandler(BidCancelNotAllowedException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public ErrorResponse handleBidCancelNotAllowed(BidCancelNotAllowedException e) {
+        return new ErrorResponse("NOT_BID_OWNER", e.getMessage());
+    }
+
+    @ExceptionHandler(BidNotCancellableException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleBidNotCancellable(BidNotCancellableException e) {
+        return new ErrorResponse("BID_NOT_ACTIVE", e.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

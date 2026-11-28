@@ -52,7 +52,7 @@ public class AuctionCancelService {
                 || !product.getEndAt().isAfter(LocalDateTime.now())) {
             throw AuctionNotCancellableException.alreadyEnded(productId);
         }
-        if (bidRepository.existsByProductIdAndValidTrue(productId)) {
+        if (bidRepository.existsByProductIdAndValidTrueAndCancelledAtIsNull(productId)) {
             throw AuctionNotCancellableException.hasBids(productId);
         }
 

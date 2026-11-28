@@ -137,7 +137,9 @@ public class BidService {
         // 처리 직후의 현재가 기준 "다음 입찰의 최소 금액". 이긴 입찰이면 방금 올라간 가격 + 단위,
         // 진 입찰이면 가격이 그대로라 처음 계산한 minNextBid와 같다.
         int nextMinBid = product.getCurrentPrice() + product.getBidUnit();
-        return new BidResult(savedBid, extended, reason, nextMinBid);
+        User bidder = userRepository.findById(bidderId)
+                .orElseThrow(() -> new IllegalStateException("입찰자를 찾을 수 없습니다: " + bidderId));
+        return new BidResult(savedBid, extended, reason, nextMinBid, creditService.availableCredit(bidder));
     }
 
     // 크레딧 확인 (이슈 #163). 입찰을 받아 주면 그 금액만큼 내 크레딧이 이 경매에 묶이므로,
