@@ -6,6 +6,14 @@ export interface BidPlacedEvent {
   bid_at: string;
 }
 
+export interface BidCancelledEvent {
+  event: "bid_cancelled";
+  product_id: string;
+  current_price: number;
+  bidder_id: string | null;
+  cancelled_bid_ids: string[];
+}
+
 export interface AuctionExtendedEvent {
   event: "auction_extended";
   product_id: string;
@@ -33,6 +41,7 @@ export interface ConnectedEvent {
 export type AuctionEvent =
   | ConnectedEvent
   | BidPlacedEvent
+  | BidCancelledEvent
   | AuctionExtendedEvent
   | AuctionClosedEvent
   | AuctionCancelledEvent;
@@ -42,6 +51,7 @@ export type AuctionEvent =
 export type LobbyEvent =
   | ConnectedEvent
   | { event: "bid_placed"; product_id: string; current_price: number }
+  | { event: "bid_cancelled"; product_id: string; current_price: number }
   | { event: "auction_extended"; product_id: string; new_end_at: string }
   | { event: "auction_closed"; product_id: string; final_price: number | null }
   | { event: "auction_cancelled"; product_id: string };
