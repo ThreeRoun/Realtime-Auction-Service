@@ -27,6 +27,10 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+	// 이벤트에 현재 트레이스 정보(traceparent)를 담기 위한 OpenTelemetry API.
+	// 실제 트레이스 수집은 Java 에이전트가 하고, 에이전트가 없으면 아무 동작도 하지 않는다(no-op).
+	// 버전은 Dockerfile의 에이전트(2.33.1)가 쓰는 SDK 버전(1.67.0)과 맞춘다.
+	implementation 'io.opentelemetry:opentelemetry-api:1.67.0'
 	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
 	implementation 'org.springframework.security:spring-security-crypto'
 	implementation 'io.jsonwebtoken:jjwt-api:0.12.6'

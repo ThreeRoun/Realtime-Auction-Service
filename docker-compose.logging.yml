@@ -57,6 +57,18 @@ services:
       - loki
       - tempo
 
+  # 로그 스택과 함께 띄울 때만 경매 엔진의 트레이스를 켠다.
+  # (docker-compose.yml의 auction-engine 설정에 환경변수만 덧붙인다)
+  # 엔진이 OTLP로 보낸 트레이스를 Alloy가 받아 Tempo로 전달한다.
+  auction-engine:
+    environment:
+      - JAVA_TOOL_OPTIONS=-javaagent:/app/opentelemetry-javaagent.jar
+      - OTEL_SERVICE_NAME=auction-engine
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4318
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+      - OTEL_METRICS_EXPORTER=none
+      - OTEL_LOGS_EXPORTER=none
+
   grafana:
     image: grafana/grafana:12.1.1
     container_name: auction-grafana
